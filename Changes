@@ -2,10 +2,28 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.23  Thu Jun 10 0:00 2004
+        - New: DBIx::Simple::SQE.
+        - New: $db->abstract.
+        - New: $db->select.
+        - New: $db->insert.
+        - New: $db->update.
+        - New: $db->delete.
+        - These new methods use Nathan Wiger's SQL::Abstract (loaded on demand)
+          and are based on a suggestion by simonm (perlmonks.org).
+        - Yes, I lied. I said that this module would never get SQL abstraction,
+          but this was too easy to add and doesn't hurt anyone who doesn't use
+          it.
+        - New: $db->begin, an alias for $db->begin_work.
+     !! - Removed: $db->emulate_subqueries, $db->esq. (But see 
+          DBIx::Simple::SQE.)
+     !! - Removed: $db->omniholder. (Now a constant: always "(??)".)
+
 1.22  Thu May 6 17:30 2004
         - Changed the declaration of a variable so that it doesn't blow up
-          under 5.8.4's better strict. (This should also fix a still
-          undiscovered bug in the deprecated subquery emulation.)
+          under 5.8.4's better strict. This should also fix a still
+          undiscovered bug in the deprecated subquery emulation.
+          (Reported and patched by Jos Boumans <irc>)
 
 1.21  Thu Apr 29 14:40 2004
         - Removed two nonsense entries from the changelog. $db->array and

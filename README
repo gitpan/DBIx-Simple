@@ -4,10 +4,18 @@ INSTALLATION
 
 To install this module type the following:
 
-   perl Makefile.PL
-   make
-   make test
-   make install
+    perl Makefile.PL
+    make
+    make test
+    make install
 
 Or use CPANPLUS to automate the process.
 
+PREREQUISITES
+
+    DBI
+    Data::Swap
+
+Optionally, SQL::Abstract can be used for added functionality.
+
+These modules are available from CPAN, http://cpan.org/

@@ -166,21 +166,90 @@ or:
 
     # $names = { $id => $name }
 
-=head2 Subquery emulation
+=head1 EXAMPLES WITH SQL::Abstract
 
-B<deprecated>
+If you have SQL::Abstract installed, you can use the abstracting methods
+C<select>, C<insert>, C<update>, C<delete>. These work like C<query>, but
+instead of a query and bind arguments, use abstracted arguments.
 
-    $db->emulate_subqueries = 1;
+You should read L<SQL::Abstract>. These examples are not enough to fully
+understand what is going on.
+
+The SQL::Abstract object is available (writable) through the C<abstract>
+property.
+
+The following examples are based on the documentation of SQL::Abstract.
+
+=head2 Overview
+
+If you don't like the defaults, just assign a new object:
+
+    $db->abstract = SQL::Abstract->new(
+        case    => 'lower',
+        cmp     => 'like', 
+        logic   => 'and', 
+        convert => 'upper'
+    );
+
+If you don't assign any object, one will be created automatically using the
+default options. The SQL::Abstract module is loaded on demand.
+
+    my $result = $db->select($table, \@fields, \%where, \@order);
+    my $result = $db->insert($table, \%fieldvals || \@values);
+    my $result = $db->update($table, \%fieldvals, \%where);
+    my $result = $db->delete($table, \%where);
+
+    for ($result->hashes) { ... }
+
+=head2 Complete examples
+
+=head3 select
+
+    my @tickets = $db->select(
+        'tickets', '*', {
+            requestor => 'inna',
+            worker    => ['nwiger', 'rcwe', 'sfz'],
+            status    => { '!=', 'completed' }
+        }
+    )->hashes;
+
+=head3 insert
+
+If you already have your data as a hash, inserting becomes much easier:
+
+    $db->insert('people', \%data);
+
+Instead of:
+
+    $db->query(
+        q[
+            INSERT 
+            INTO people (name, phone, address, ...)
+            VALUES (??)
+        ],
+        @data{'name', 'phone', 'address', ... }
+    );
     
-    my @projects = $db->query(q{
-	SELECT project_name
-	FROM   projects
-	WHERE  user_id = (
-	    SELECT id
-	    FROM   users
-	    WHERE  email = ?
-	)
-    }, $email )->flat;
+=head3 update, delete
+
+    $db->update(
+        'tickets', {
+            worker    => 'juerd',
+            status    => 'completed'
+        },
+        { id => $id }
+    )
+
+    $db->delete('tickets', { id => $id });
+
+=head3 where
+
+The C<where> method is not wrapped directly, because it doesn't generate a
+query and thus doesn't really have anything to do with the database module.
+
+But using the C<abstract> property, you can still easily access it:
+
+    my $where = $db->abstract->where({ foo => $foo });
 
 =head1 LICENSE
 
@@ -194,6 +263,6 @@ Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>
 
 =head1 SEE ALSO
 
-L<DBIx::Simple>
+L<DBIx::Simple>, L<SQL::Abstract>
 
 =cut

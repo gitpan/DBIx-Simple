@@ -4,14 +4,11 @@ use DBI;
 use Data::Swap ();
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.22';
+$DBIx::Simple::VERSION = '1.23';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
 my $quoted         = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
-my $queryfoo;
-   $queryfoo       = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
-my $subquery_match = qr/\(\s*(select\s+$queryfoo)\)/i;
 
 my %statements;       # "$db" => { "$st" => $st, ... }
 my %old_statements;   # "$db" => [ [ $query, $st ], ... ]
@@ -26,11 +23,17 @@ package DBIx::Simple;
 
 sub _dummy { bless \my $dummy, 'DBIx::Simple::Dummy' }
 
+if (eval { require Want }) {
+    *_want    = *Want::want;
+} else {
+    *_want    = sub { 1 };
+}
+
 ### constructor
 
 sub connect {
     my ($class, @arguments) = @_;
-    my $self = { omniholder => '(??)', emulate_subqueries => 0, lc_columns => 1 };
+    my $self = { lc_columns => 1 };
     if (defined $arguments[0] and UNIVERSAL::isa($arguments[0], 'DBI::db')) {
 	$self->{dbh} = shift @arguments;
 	Carp::carp("Additional arguments for $class->connect are ignored")
@@ -59,61 +62,46 @@ sub new {
 
 ### properties
 
-sub omniholder         : lvalue { $_[0]->{omniholder} }
-sub emulate_subqueries : lvalue { $_[0]->{emulate_subqueries} }
-sub esq                : lvalue { $_[0]->{emulate_subqueries} }
-sub keep_statements    : lvalue { $keep_statements{ $_[0] } }
-sub lc_columns         : lvalue { $_[0]->{lc_columns} }
+sub keep_statements : lvalue { $keep_statements{ $_[0] } }
+sub lc_columns      : lvalue { $_[0]->{lc_columns} }
+
+sub abstract : lvalue {
+    require SQL::Abstract;
+    $_[0]->{abstract} ||= SQL::Abstract->new if _want('RVALUE');
+    $_[0]->{abstract}
+}
+
+sub emulate_subqueries : lvalue {
+    Carp::croak('emulate_subqueries no longer exists (read the documentation)');
+    my $dummy;
+}
+sub esq : lvalue {
+    Carp::croak('esq  no longer exists (read the documentation)');
+    my $dummy;
+}
 
 ### private methods
+
+# Used by SQE to get the regex (so not really private)
+sub _gimme_regex { no strict 'refs'; *{ caller() . '::quoted' } = \$quoted; }
 
 # Replace (??) with (?, ?, ?, ...)
 sub _replace_omniholder {
     my ($self, $query, $binds) = @_;
-    my $omniholder = $self->{omniholder};
-    
-    if (defined $omniholder and length $omniholder) {
-        return if $$query !~ /\Q$omniholder/;
-	my $omniholders = 0;
-	my $re = quotemeta $omniholder;
-	$$query =~ s[($re|$quoted+|(?:(?!$re).)+)] {
-	    $1 eq $omniholder
-	    ? do {
-		Carp::croak('There can be only one omniholder')
-		    if $omniholders++;
-                
-		'(' . join(', ', ('?') x @$binds) . ')'
-	    }
-	    : $1
-	}eg;
-    }
+    return if $$query !~ /\(\?\?\)/;
+    my $omniholders = 0;
+    $$query =~ s[(\(\?\?\)|$quoted+|(?:(?!\(\?\?\)).)+)] {
+        $1 eq '(??)'
+        ? do {
+            Carp::croak('There can be only one omniholder')
+                if $omniholders++;
+            '(' . join(', ', ('?') x @$binds) . ')'
+        }
+        : $1
+    }eg;
 }   
 
-# Deprecated
-sub _interpolate_subqueries {
-    my ($self, $query, $binds) = @_;
-    while ($$query =~ /$subquery_match/) {
-        my $start  = $-[1];
-        my $length = $+[1] - $-[1];
-        my $pre    = substr($$query, 0, $start);
-        my $match  = $1;
-        
-        substr $$query, $start, $length, join(',',
-            map $self->{dbh}->quote($_),
-            $self->query(
-                $match,
-                splice(
-                    @$binds,
-                    scalar grep($_ eq '?', $pre  =~ /\?|$quoted|[^?'"]+/g),
-                    scalar grep($_ eq '?', $match=~ /\?|$quoted|[^?'"]+/g)
-                )
-            )->flat
-        );
-        return 0 if not $self->{success};
-    }
-    return 1;
-}
-
+# Invalidate and clean up
 sub _die {
     my ($self, $cause) = @_;
 
@@ -144,8 +132,6 @@ sub query {
     $self->{success} = 0;
    
     $self->_replace_omniholder(\$query, \@binds);
-    $self->_interpolate_subqueries(\$query, \@binds) or return _dummy
-        if $self->{emulate_subqueries};
     
     my $st;
     my $sth;
@@ -197,6 +183,7 @@ sub error {
 
 sub dbh            { $_[0]->{dbh}             }
 sub begin_work     { $_[0]->{dbh}->begin_work }
+sub begin          { $_[0]->begin_work        }
 sub commit         { $_[0]->{dbh}->commit     }
 sub rollback       { $_[0]->{dbh}->rollback   }
 sub func           { $_[0]->{dbh}->func(@_[1..$#_]) }
@@ -220,6 +207,16 @@ sub disconnect {
 sub DESTROY {
     my ($self) = @_;
     $self->_die(sprintf($err_cause, "$self->DESTROY", (caller)[1, 2]));
+}
+
+### public methods wrapping SQL::Abstract
+
+for my $method (qw/select insert update delete/) {
+    no strict 'refs';
+    *$method = sub {
+        my $self = shift;
+        return $self->query($self->abstract->$method(@_));
+    }
 }
 
 package DBIx::Simple::Dummy;
@@ -443,7 +440,7 @@ __END__
 
 =head1 NAME
 
-DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
+DBIx::Simple - Easy-to-use OO interface to DBI
 
 =head1 SYNOPSIS
 
@@ -451,8 +448,6 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
  
     $db = DBIx::Simple->connect(...)  # or ->new
 
-    $db->omniholder = '(??)'
-    $db->emulate_subqueries = 0  # or ->esq 
     $db->keep_statements = 16
     $db->lc_columns = 1
 
@@ -462,8 +457,19 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
     $result = $db->query(...)
 
+=head2 DBIx::Simple + SQL::Abstract
+    
+    $db->abstract = SQL::Abstract->new(...)
+
+    $result = $db->select(...)
+    $result = $db->insert(...)
+    $result = $db->update(...)
+    $result = $db->delete(...)
+
 =head2 DBIx::Simple::Result
 
+    @columns = $result->columns
+    
     $result->into($foo, $bar, $baz)
     $row = $result->fetch
     
@@ -496,7 +502,7 @@ slurping methods.
 The C<query> method returns either a result object, or a dummy object. The
 dummy object returns undef (or an empty list) for all methods and when used in
 boolean context, is false. The dummy object lets you postpone (or skip) error
-checking, but it also makes immediate error checking a simple C<< 
+checking, but it also makes immediate error checking simply C<< 
 $db->query(...) or die $db->error >>.
 
 =head2 DBIx::Simple methods
@@ -521,34 +527,22 @@ should be a DBI::db object, not a DBIx::Simple object.
 This method is the constructor and returns a DBIx::Simple object on success. On
 failure, it returns undef.
 
-=item C<omniholder = $string>
+=item C<< abstract = SQL::Abstract->new(...) >>
 
-B<This method is deprecated and will be removed in a future version.>
-In future versions, the omniholder will always be C<(??)> and no longer be
-user definable. If you have a good reason to not want C<(??)>, please do try to
-convince me.
+Sets the object to use with the C<select>, C<insert>, C<update> and C<delete>
+methods. On first access, will create one with SQL::Abstract's default options.
 
-The omniholder string is, when found in a query, replaced with C<(?, ?, ?,
-...)> with as many question marks as C<@values> passed to C<query>.
+Requires that Nathan Wiger's SQL::Abstract module be installed. It is available
+from CPAN.
+
+In theory, you can assign any object to this property, as long as that object
+has these four methods, and they return a list suitable for use with the
+C<query> method.
 
 =item C<emulate_subqueries = $bool>
 
-=item C<esq = $bool>
-
-B<This method is deprecated and will be removed in a future version.>
-C<emulate_subqueries> was originally invented because MySQL had no subselects
-of its own, but it has now.
-
-When true at time of query execution, makes C<query> emulate nested subqueries
-(SELECT only) by executing them and interpolating the results.
-C<emulate_subqueries> is false by default and should not be used if the
-database provides real subqueries.
-
-Only subqueries like C<(SELECT ...)> (note the parentheses) are interpolated.
-
-Please note that emulation is done by doing multiple queries and is not
-atomic, as it would be if the database supported real subqueries. The
-queries are executed independently.
+This property is gone forever. Use DBIx::Simple::ESQ if you need subquery
+emulation. Don't forget to read its documentation first.
 
 =item C<lc_columns = $bool>
 
@@ -586,24 +580,37 @@ and "C<errstr>" in L<DBI>.
 
 The C<query> method prepares and executes the query and returns a result object.
 
-If an omniholder (see above) is present in the query, it is replaced with a
-list of as many question marks as @values. If subquery emulation (see above) is
-enabled, subquery results are interpolated in the main query before the main
-query is executed.
+If an omniholder (the string C<(??)>) is present in the query, it is replaced
+with a list of as many question marks as @values. If subquery emulation (see
+above) is enabled, subquery results are interpolated in the main query before
+the main query is executed.
 
 The database drivers substitute placeholders (question marks that do not appear
 in quoted literals) in the query with the given @values, after them escaping
-them. You should always use placeholders, and never use user input in database
-queries.
+them. You should always use placeholders, and never use raw user input in
+database queries.
 
 On success, returns a DBIx::Simple::Result object.
 
 On failure, returns a DBIx::Simple::Dummy object.
 
-=item C<begin_work>, C<commit>, C<rollback>
+=item C<select>, C<insert>, C<update>, C<delete>
+
+Calls the respective method on C<abstract> and uses it with C<query>. In other
+words: these are high level forms of C<query>.
+
+See the C<abstract> for more information, and read SQL::Abstract's
+documentation for usage information.
+
+Obviously, calling C<query> directly is faster for the computer and using these
+abstracting methods is faster for the programmer.
+
+=item C<begin_work>, C<begin>, C<commit>, C<rollback>
 
 These transaction related methods call the DBI respective methods and
 Do What You Mean. See L<DBI> for details.
+
+C<begin> is an alias for C<begin_work>.
 
 =item C<func(...)>
 
@@ -764,9 +771,6 @@ fetched later overwrite earlier ones.
 PrintError is disabled by default. If you enable it, beware that it will report
 line numbers in DBIx/Simple.pm. 
 
-Note: this module does not provide any SQL abstraction and never will. If you
-don't want to write SQL queries, use DBIx::Abstract.
-
 =head1 LICENSE
 
 There is no license. This software was released into the public domain. Do with
@@ -779,7 +783,9 @@ Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>
 
 =head1 SEE ALSO
 
-L<perl>, L<perlref>, L<DBI>, L<DBIx::Simple::Examples>
+L<perl>, L<perlref>
+
+L<DBI>, L<DBIx::Simple::Examples>, L<SQL::Abstract>
 
 =cut
 
