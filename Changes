@@ -1,4 +1,9 @@
 Revision history for Perl extension DBIx::Simple.
 
+0.02  Sat Mar 30 14:00:00 2002
+	- New: commit() and rollback(). Suggested by `tradez' (perlmonks.org)
+	- New: map_hashes(), map_arrays(), map(). Suggested by `mattr' (perlmonks.org)
+	- New: flat(), a plural form of list()
+
 0.01  Thu Mar 28 18:04:00 2002
 	- Initial release

@@ -1,4 +1,4 @@
-DBIx/Simple version 0.01
+DBIx/Simple version 0.02
 ========================
 INSTALLATION
 
@@ -18,7 +18,6 @@ Copyright (C) 2002 J. Waalboer
 
 __POD2TEXT__
 
-
 NAME
     DBIx::Simple - An easy-to-use, object oriented interface to DBI
 
@@ -30,15 +29,13 @@ SYNOPSIS
         my $db = DBIx::Simple->connect(
             'DBI:mysql:database=test',     # DBI source specification
             'test', 'test',                # Username and password
-            { PrintError => 0 }            # Additional options
+            { PrintError => 1 }            # Additional options
         );
 
-        # SIMPLE QUERIES
+        #### SIMPLE QUERIES
 
         $db->query('DELETE FROM foo');
-
         die "$db->{reason} ($DBI::errstr)" if not $db->{success};
-        # Error checking is omitted in the rest of this synopsis.
 
         for (1..100) {
             $db->query(
@@ -48,12 +45,14 @@ SYNOPSIS
             );
         }
 
-        # SINGLE ROW QUERIES
+        #### SINGLE ROW QUERIES
 
         my ($two)          = $db->query('SELECT 1 + 1')->list;
         my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
 
-        # FETCHING ALL IN ONE GO (not for large results!)
+        #### FETCHING ALL IN ONE GO
+
+        my @names = $db->query('SELECT name FROM people WHERE foo > 5')->flat;
 
         for my $row ($db->query('SELECT field1, field2 FROM foo')->arrays) {
             print "--> $row->[0], $row->[1]\n";
@@ -62,9 +61,9 @@ SYNOPSIS
         for my $row ($db->query('SELECT field1, field2 FROM foo')->hashes) {
             print "--> $row->{field1}, $row->{field2}\n";
         }
-    
-        # FETCHING ONE ROW AT A TIME
-    
+
+        #### FETCHING ONE ROW AT A TIME
+
         {
             my $result = $db->query('SELECT field1, field2 FROM foo');
             while (my $row = $result->array) {
@@ -78,6 +77,26 @@ SYNOPSIS
                 print "--> $row->{field1}, $row->{field2}\n";
             }
         }
+
+        #### BUILDING MAPS (also fetching all in one go)
+
+        # Hash of hashes
+        my $customers =
+            $db
+            -> query('SELECT id, name, location FROM people')
+            -> map_hashes('id');
+
+        # Hash of arrays
+        my $customers =
+            $db
+            -> query('SELECT id, name, location FROM people')
+            -> map_arrays(0);
+
+        # Hash of values
+        my $names =
+            $db
+            -> query('SELECT id, name FROM people')
+            -> map;
 
 DESCRIPTION
     This module is aimed at ease of use, not at SQL abstraction or
@@ -105,6 +124,9 @@ DESCRIPTION
               DBIx::Simple::Result object (or DBIx::Simple::Dummy), that can
               be used immediately to get data out of it.
 
+    "commit", "rollback"
+              These just call the DBI methods and Do What You Mean.
+
     "disconnect"
               Does What You Mean. Also note that the connection is
               automatically terminated when the object is destroyed ("undef
@@ -128,10 +150,25 @@ DESCRIPTION
               hash reference, respectively. Internally, fetchrow_arrayref or
               fetchrow_hashref is used.
 
+    "flat"    flat() Returns a list of all returned fields, flattened. This
+              can be very useful if you select a single column. Consider
+              flat to be list()'s plural.
+
     "arrays" and "hashes"
               These methods return a list of rows of array or hash
               references. Internally, fetchall_arrayref is dereferenced, or
               a lot of fetchrow_hashref returns are accumulated.
+
+    "map_arrays(column number)" and "map_hashes(column name)"
+              These methods build a hash, with the chosen column as keys,
+              and the remaining columns in array or hash references as
+              values. For "map_arrays", the column number is optional and
+              defaults to 0 (the first column). The methods return a
+              reference to the built hash.
+
+    "map"     Returns a reference to a hash that was built using the first
+              two columns as key/value pairs. Use this only if your query
+              returns two values per row (other values will be discarded).
 
     "rows"    Returns the number of rows.
 
@@ -153,6 +190,9 @@ BUGS
     this module shares all DBI bugs. If you want to report a bug, please try
     to find out if it's DBIx::Simple's fault or DBI's fault first, and don't
     report DBI bugs to me.
+
+    Note: the map functions do not check if the key values are unique. If
+    they are not, keys are overwritten.
 
 USE THIS MODULE AT YOUR OWN RISK
     No warranty, no guarantees. I hereby disclaim all responsibility for
