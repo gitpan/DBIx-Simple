@@ -4,7 +4,7 @@ use DBI;
 use Data::Swap ();
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.25';
+$DBIx::Simple::VERSION = '1.26';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -69,15 +69,6 @@ sub abstract : lvalue {
     require SQL::Abstract;
     $_[0]->{abstract} ||= SQL::Abstract->new if _want('RVALUE');
     $_[0]->{abstract}
-}
-
-sub emulate_subqueries : lvalue {
-    Carp::croak('emulate_subqueries no longer exists (read the documentation)');
-    my $dummy;
-}
-sub esq : lvalue {
-    Carp::croak('esq no longer exists (read the documentation)');
-    my $dummy;
 }
 
 ### private methods
@@ -592,17 +583,12 @@ failure, it returns undef.
 Sets the object to use with the C<select>, C<insert>, C<update> and C<delete>
 methods. On first access, will create one with SQL::Abstract's default options.
 
-I<Requires that Nathan Wiger's SQL::Abstract module be installed. It is available
-from CPAN.>
+I<Requires that Nathan Wiger's SQL::Abstract module be installed. It is
+available from CPAN.>
 
 In theory, you can assign any object to this property, as long as that object
 has these four methods, and they return a list suitable for use with the
 C<query> method.
-
-=item C<emulate_subqueries = $bool>
-
-This property is gone forever. Use DBIx::Simple::SQE if you need subquery
-emulation. Don't forget to read its documentation first.
 
 =item C<lc_columns = $bool>
 
@@ -640,10 +626,8 @@ and "C<errstr>" in L<DBI>.
 
 The C<query> method prepares and executes the query and returns a result object.
 
-If an omniholder (the string C<(??)>) is present in the query, it is replaced
-with a list of as many question marks as @values. If subquery emulation (see
-above) is enabled, subquery results are interpolated in the main query before
-the main query is executed.
+If the string C<(??)> is present in the query, it is replaced with a list of as
+many question marks as @values.
 
 The database drivers substitute placeholders (question marks that do not appear
 in quoted literals) in the query with the given @values, after them escaping
@@ -709,7 +693,7 @@ boolean context, a dummy object evaluates to false.
 
 Returns a list of column names. In scalar context, returns an array reference.
 
-Column names are lower cased if C<lc_underscores> was true when the query was
+Column names are lower cased if C<lc_columns> was true when the query was
 executed.
 
 =item C<bind(LIST)>
@@ -753,7 +737,7 @@ Fetches a single row and returns an array reference.
 
 Fetches a single row and returns a hash reference.
 
-Keys are lower cased if C<lc_underscores> was true when the query was executed.
+Keys are lower cased if C<lc_columns> was true when the query was executed.
 
 =item C<flat>
 
@@ -771,7 +755,7 @@ Fetches all remaining rows and returns a list of hash references.
 
 In scalar context, returns an array reference.
 
-Keys are lower cased if C<lc_underscores> was true when the query was executed.
+Keys are lower cased if C<lc_columns> was true when the query was executed.
 
 =item C<map_arrays($column_number)>
 

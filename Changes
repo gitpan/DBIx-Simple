@@ -2,6 +2,10 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.26  Tue Nov 30 14:25 2004
+        - Removed documentation and deprecation warning of emulate_subqueries.
+        - Minor documentation fixes.
+
 1.25  Mon Jun 21 9:39 2004
         - New: $result->text.
         - This new method can use Anno Siegel's Text::Table (loaded on demand).
