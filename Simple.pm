@@ -4,11 +4,10 @@ use 5.006; # qr//, /(??{})/
 use DBI;
 use Carp;
 use strict;
-use vars qw($VERSION);
 
 my $omniholder = '(??)';
 
-$VERSION = '0.08';
+our $VERSION = '0.09';
 
 my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
 my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
@@ -120,7 +119,7 @@ sub die {
     return if $self->{dead};
     $statements{$self}{$_}->die($reason) for keys %{ $statements{$self} };
     delete $statements{$self};
-    $self->{dbi}->disconnect();
+    $self->{dbi}->disconnect() if defined $self->{dbi}; # XXX
     $self->{dead} = 1;
     $self->{reason} = $reason;
 }

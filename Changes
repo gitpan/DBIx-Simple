@@ -1,5 +1,11 @@
 Revision history for Perl extension DBIx::Simple.
 
+0.09  Sun Dec 8 5:59 2002
+	- $dbh->disconnect() only if the object's still there. This works
+	  around perl bug #18951. Something is killing objects during (or just
+	  before) global destruction. This bug was first found by Gerard Oskamp
+	  <gerard-perl@tuxje.nl>.
+
 0.08  Mon Dec 2 21:16 2002
 	- Added $result->finish() method
 	- The documentation was wrong: "undef $result" did nothing useful, as
