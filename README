@@ -1,0 +1,166 @@
+DBIx/Simple version 0.01
+========================
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+COPYRIGHT AND LICENCE
+
+Use this module the way you want to use it, but if anything goes wrong,
+it's not my fault :)
+
+Copyright (C) 2002 J. Waalboer
+
+__POD2TEXT__
+
+
+NAME
+    DBIx::Simple - An easy-to-use, object oriented interface to DBI
+
+SYNOPSIS
+        #!/usr/bin/perl -w
+        use strict;
+        use DBIx::Simple;
+
+        my $db = DBIx::Simple->connect(
+            'DBI:mysql:database=test',     # DBI source specification
+            'test', 'test',                # Username and password
+            { PrintError => 0 }            # Additional options
+        );
+
+        # SIMPLE QUERIES
+
+        $db->query('DELETE FROM foo');
+
+        die "$db->{reason} ($DBI::errstr)" if not $db->{success};
+        # Error checking is omitted in the rest of this synopsis.
+
+        for (1..100) {
+            $db->query(
+                'INSERT INTO foo VALUES (?, ?)',
+                int rand(10),
+                int rand(10)
+            );
+        }
+
+        # SINGLE ROW QUERIES
+
+        my ($two)          = $db->query('SELECT 1 + 1')->list;
+        my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
+
+        # FETCHING ALL IN ONE GO (not for large results!)
+
+        for my $row ($db->query('SELECT field1, field2 FROM foo')->arrays) {
+            print "--> $row->[0], $row->[1]\n";
+        }
+
+        for my $row ($db->query('SELECT field1, field2 FROM foo')->hashes) {
+            print "--> $row->{field1}, $row->{field2}\n";
+        }
+    
+        # FETCHING ONE ROW AT A TIME
+    
+        {
+            my $result = $db->query('SELECT field1, field2 FROM foo');
+            while (my $row = $result->array) {
+                print "--> $row->[0], $row->[1]\n";
+            }
+        }
+
+        {
+            my $result = $db->query('SELECT field1, field2 FROM foo');
+            while (my $row = $result->hash) {
+                print "--> $row->{field1}, $row->{field2}\n";
+            }
+        }
+
+DESCRIPTION
+    This module is aimed at ease of use, not at SQL abstraction or
+    efficiency. The only thing this module does is provide a bone easy
+    interface to the already existing DBI module. With DBIx::Simple, the
+    terms dbh and sth are not used in the documentation (except for this
+    description), although they're omnipresent in the module's source. You
+    don't have to think about them.
+
+    A query returns a result object, that can be used directly to pick the
+    sort of output you want. There's no need to check if the query succeeded
+    in between calls, you can stack them safely, and check for success
+    later. This is because failed queries have dummy results, objects of
+    which all methods return undef.
+
+  DBIx::Simple object methods
+    "DBIx::Simple->connect( ... )"
+              This argument takes the exact arguments a normal
+              DBI->connect() would take. It's the constructor method, and it
+              returns a new DBIx::Simple object.
+
+    "query($query, @values)"
+              This calls DBI's prepare() and execute() methods, passing the
+              values along to replace placeholders. query() returns a new
+              DBIx::Simple::Result object (or DBIx::Simple::Dummy), that can
+              be used immediately to get data out of it.
+
+    "disconnect"
+              Does What You Mean. Also note that the connection is
+              automatically terminated when the object is destroyed ("undef
+              $db" to do so explicitly), and that all statements are also
+              finished when the object is destoryed. disconnect() Does not
+              destory the object.
+
+  DBIx::Simple::Result object methods
+    "new"     The constructor should only be called internally, by
+              DBIx::Simple itself. Some simple minded garbage collection is
+              done in DBIx::Simple, and you shouldn't be directly creating
+              your own result objects. The curious are encouraged to read
+              the module's source code to find out what the arguments to
+              new() are.
+
+    "list"    list() Returns a list of elements in a single row. This is
+              like a dereferenced "$result-"array()>.
+
+    "array" and "hash"
+              These methods return a single row, in an array reference, or a
+              hash reference, respectively. Internally, fetchrow_arrayref or
+              fetchrow_hashref is used.
+
+    "arrays" and "hashes"
+              These methods return a list of rows of array or hash
+              references. Internally, fetchall_arrayref is dereferenced, or
+              a lot of fetchrow_hashref returns are accumulated.
+
+    "rows"    Returns the number of rows.
+
+    finish?   There is no finish method. To finish the statement, just let
+              the object go out of scope (you should always use ""my"", and
+              ""use strict"") or destroy it explicitly using "undef
+              $result".
+
+FEEDBACK
+    This module has a very low version number for a reason. I'd like to hear
+    from you what you think about DBIx::Simple, and if it has made your life
+    easier :). If you find serious bugs, let me know. If you think an
+    important feature is missing, let me know (but I'm not going to
+    implement functions that aren't used a lot, or that are only for
+    effeciency, because this module has only one goal: simplicity).
+
+BUGS
+    Nothing is perfect, but let's try to create perfect things. Of course,
+    this module shares all DBI bugs. If you want to report a bug, please try
+    to find out if it's DBIx::Simple's fault or DBI's fault first, and don't
+    report DBI bugs to me.
+
+USE THIS MODULE AT YOUR OWN RISK
+    No warranty, no guarantees. I hereby disclaim all responsibility for
+    what might go wrong.
+
+AUTHOR
+    Juerd <juerd@juerd.nl>
+
+SEE ALSO
+    DBI
+
