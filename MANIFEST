@@ -1,6 +1,8 @@
 Changes
-Simple.pm
 Makefile.PL
 MANIFEST
 README
-test.pl
+t/DBIx-Simple.t
+lib/DBIx/Simple.pm
+lib/DBIx/Simple/Examples.pod
+META.yml                                 Module meta-data (added by MakeMaker)

@@ -1,75 +1,112 @@
 Revision history for Perl extension DBIx::Simple.
 
+Incompatible changes are marked with "!!".
+
+1.20  Tue Apr 27 11:15 2004
+        - Almost a complete rewrite :)
+        - $db->emulate_subqueries is now deprecated. Use a better database
+          engine instead.
+        - $db->omniholder is now deprecated. The omniholder will be constant.
+        - $db->{success} is now deprecated. Use the return value of $db->query
+          instead.
+        - $db->{reason} is now deprecated. Use $db->error instead.
+     !! - $db->{dbi} has been renamed. Use $db->dbh instead (not $db->{dbh}).
+        - DBIx::Simple->error can now be used as a class method.
+        - New: $db->last_insert_id.
+        - New: $db->keep_statements and statement caching.
+        - New: $db->dbh.
+     !! - New: $db->lc_columns, enabled by default. Affects $result->columns,
+          $result->hash, $result->hashes, and $result->map_hashes.
+        - New: $result->columns.
+        - New: $result->bind, $result->fetch, $result->into.
+        - New: $result->func. (Suggested by Sean McMurray <smcmurray@cpan.org>)
+        - New: $result->attr. (Suggested by Sean McMurray <smcmurray@cpan.org>)
+        - $result->array now returns a copy instead of the same arrayref over
+          and over. If you need maximum efficiency, use $result->fetch instead.
+        - Clarified in the documentation that $result->array always returns the
+          same reference.
+     !! - Made $result->hash always use the same reference.
+        - Removed dependency on Attribute::Property to fix bugs with
+          $db->emulate_subqueries and $db->omniholder in Perl 5.8.x.
+     !! - As a result, archaic property assignment style no longer works.
+          Instead of "$foo->bar($new_value)", use "$foo->bar = $new_value".
+        - Improved error reporting.
+        - As a result, DBIx::Simple now depends on Data::Swap.
+        - Moved examples to a separate document: DBIx::Simple::Examples.
+        - More conditions in DESTROY methods, to handle random destruction
+          order during global destruction better.
+        - Rebuilt distribution with h2xs to get lib/ and t/.
+
 1.11  Tue Mar 26 19:05 2003
         - Documentation updates.
-        - list() now returns the *last* element in scalar context (was: first).
+     !! - list() now returns the *last* element in scalar context (was: first).
         - hashes() and arrays() now return array references in scalar context.
         - Migrated two properties to Attribute::Properties. (new dependency)
         - $VERSION++.
 
 0.10  Thu Jan 9 10:03 2003
-	- Documentation rewrite!
-	- New: $db->error(). In an upcoming release, $db->{reason} will be
-	  removed.
-	- New: $db->func().
-	- Removed some unused variables.
-	- prepare() and execute() are now wrapped in eval { } to rewrite
-	  filename and line number if you use RaiseError
-	- $result->map_hashes(), $result->map_arrays() and $result->map() now
-	  return a list in list context. In scalar context, they still return
-	  a hash reference
-	- Dummy objects in boolean context now evaluate to false, so you can
-	  write "$db->query(...) or die $db->error;" but still be able to write
-	  "$db->query(...)->something()".
-	- Dummy object's methods now return an empty list in list context
-	  instead of undef. 
-	- PrintError now defaults to 0
+        - Documentation rewrite!
+        - New: $db->error(). In an upcoming release, $db->{reason} will be
+          removed.
+        - New: $db->func().
+        - Removed some unused variables.
+        - prepare() and execute() are now wrapped in eval { } to rewrite
+          filename and line number if you use RaiseError
+        - $result->map_hashes(), $result->map_arrays() and $result->map() now
+          return a list in list context. In scalar context, they still return
+          a hash reference
+        - Dummy objects in boolean context now evaluate to false, so you can
+          write "$db->query(...) or die $db->error;" but still be able to write
+          "$db->query(...)->something()".
+        - Dummy object's methods now return an empty list in list context
+          instead of undef. 
+        - PrintError now defaults to 0
 
 0.09  Sun Dec 8 5:59 2002
-	- $dbh->disconnect() only if the object's still there. This works
-	  around perl bug #18951. Something is killing objects during (or just
-	  before) global destruction. This bug was first found by Gerard Oskamp
-	  <gerard-perl@tuxje.nl>.
+        - $dbh->disconnect() only if the object's still there. This works
+          around perl bug #18951. Something is killing objects during (or just
+          before) global destruction. This bug was first found by Gerard Oskamp
+          <gerard-perl@tuxje.nl>.
 
 0.08  Mon Dec 2 21:16 2002
-	- Added $result->finish() method
-	- The documentation was wrong: "undef $result" did nothing useful, as
-	  DBIx::Simple kept a copy internally, for garbage cleaning purposes.
-	  An in-between class DBIx::Simple::Statement was added to work around
-	  this.
-	- $db->disconnect() now destroys active statements
-	- When finish() or disconnect() is used, attempts to use the database
-	  connection or statement handle now result in a verbose error message.
+        - Added $result->finish() method
+        - The documentation was wrong: "undef $result" did nothing useful, as
+          DBIx::Simple kept a copy internally, for garbage cleaning purposes.
+          An in-between class DBIx::Simple::Statement was added to work around
+          this.
+        - $db->disconnect() now destroys active statements
+        - When finish() or disconnect() is used, attempts to use the database
+          connection or statement handle now result in a verbose error message.
 
 0.07  Mon Sep 30 7:48 2002
-	- Removed TraceLevel thing that caused DBI to output debugging info
-	- Very minor documentation update (removed 2 characters)
+        - Removed TraceLevel thing that caused DBI to output debugging info
+        - Very minor documentation update (removed 2 characters)
 
 0.06  Fri Sep 20 10:55 2002
-	- Oops: forgot to update the README file; nothing serious
+        - Oops: forgot to update the README file; nothing serious
 
 0.05  Thu Sep 19 14:32 2002
-	- Added $db->begin_work
-	- No longer expanding the (??) omniholder inside quoted SQL
-	- Subquery emulation! Have subqueries in MySQL! YAY!
-	  (Not enabled by default. Use $db->esq(1) to enable)
-	- This module now requires Perl >= 5.6
+        - Added $db->begin_work
+        - No longer expanding the (??) omniholder inside quoted SQL
+        - Subquery emulation! Have subqueries in MySQL! YAY!
+          (Not enabled by default. Use $db->esq(1) to enable)
+        - This module now requires Perl >= 5.6
 
 0.04  Tue Sep 17 15:46 2002
-	- Documentation updates only
+        - Documentation updates only
 
 0.03  Thu Jun 13 09:50 2002
-	- New: "(??)" and $db->omniholder() (like EZDBI's ??L placeholder)
-	- Documentation updates
-	- Code updates (now uses $_[0] directly for speed in many methods)
-	- $result->list() in scalar context returns first value only
+        - New: "(??)" and $db->omniholder() (like EZDBI's ??L placeholder)
+        - Documentation updates
+        - Code updates (now uses $_[0] directly for speed in many methods)
+        - $result->list() in scalar context returns first value only
 
 0.02  Sat Mar 30 14:00 2002
-	- New: $db->commit() and rollback().
-	  Suggested by tradez (perlmonks.org)
-	- New: $result->map_hashes(), map_arrays(), map().
-	  Suggested by mattr (perlmonks.org)
-	- New: $result->flat(), a plural form of list()
+        - New: $db->commit() and rollback().
+          Suggested by tradez (perlmonks.org)
+        - New: $result->map_hashes(), map_arrays(), map().
+          Suggested by mattr (perlmonks.org)
+        - New: $result->flat(), a plural form of list()
 
 0.01  Thu Mar 28 18:04 2002
-	- Initial CPAN release
+        - Initial CPAN release
