@@ -4,15 +4,22 @@ use 5.006; # qr//, /(??{})/
 use DBI;
 use Carp;
 use strict;
-use vars qw($VERSION %results);
+use vars qw($VERSION);
 
 my $omniholder = '(??)';
 
-$VERSION = '0.07';
+$VERSION = '0.08';
 
 my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
 my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
 my $subquery_match = qr/\(\s*(select\s+$queryfoo)\)/i;
+
+my %statements;
+
+sub EDEAD {
+    sprintf "Database object no longer usable (because of %s)",
+            $_[0]->{reason} || 'UNKNOWN'
+}
 
 sub connect {
     my ($class, @arguments) = @_;
@@ -24,10 +31,7 @@ sub connect {
     return bless $self, $class;
 }
 
-sub disconnect {
-    my ($self) = @_;
-    $self->{dbi}->disconnect() if $self->{dbi};
-}
+sub new { goto &connect; }
 
 sub omniholder {
     my ($self, $value) = @_;
@@ -37,6 +41,7 @@ sub omniholder {
 
 sub query {
     my ($self, $query, @binds) = @_;
+    croak $self->EDEAD if $self->{dead};
     $self->{success} = 0;
     
     # Replace (??) with (?, ?, ?, ...)
@@ -93,25 +98,42 @@ sub query {
 
     # $self is quoted on purpose, to pass along the stringified version,
     # and avoid increasing reference count.
-    return $results{$self}{$result} = $result =
-	DBIx::Simple::Result->new("$self", $sth);
+    my $st = DBIx::Simple::Statement->new("$self", $sth);
+    $statements{$self}{$st} = $st;
+    return DBIx::Simple::Result->new($st);
 }
 
-sub begin_work { $_[0]->{dbi}->begin_work() }
-sub commit     { $_[0]->{dbi}->commit() }
-sub rollback   { $_[0]->{dbi}->rollback() }
+sub begin_work { croak $_[0]->EDEAD if $_[0]->{dead}; $_[0]->{dbi}->begin_work }
+sub commit     { croak $_[0]->EDEAD if $_[0]->{dead}; $_[0]->{dbi}->commit     }
+sub rollback   { croak $_[0]->EDEAD if $_[0]->{dead}; $_[0]->{dbi}->rollback   }
 
 sub emulate_subqueries {
     my ($self, $value) = @_;
     $self->{esq} = ! !$value if @_ == 2;
     return $self->{esq};
 }
+
 sub esq { goto &emulate_subqueries }
+
+sub die {
+    my ($self, $reason) = @_;
+    return if $self->{dead};
+    $statements{$self}{$_}->die($reason) for keys %{ $statements{$self} };
+    delete $statements{$self};
+    $self->{dbi}->disconnect();
+    $self->{dead} = 1;
+    $self->{reason} = $reason;
+}
+
+sub disconnect {
+    my ($self) = @_;
+    croak $self->EDEAD if $self->{dead};
+    $self->die(sprintf "$self->disconnect at %s line %d", (caller)[1, 2]);
+}
 
 sub DESTROY {
     my ($self) = @_;
-    $results{$self}{$_}->DESTROY() for keys %{ $results{$self} };
-    $self->disconnect();
+    $self->die(sprintf "$self->DESTROY at %s line %d", (caller)[1, 2]);
 }
 
 package DBIx::Simple::Dummy;
@@ -120,52 +142,88 @@ use strict;
 sub new      { bless \my $dummy, shift }
 sub AUTOLOAD { undef }
 
+package DBIx::Simple::Statement;
+
+sub new {
+    my ($class, $db, $sth) = @_;
+    my $self = {
+	sth  => $sth,
+	db   => $db,
+	dead => 0,
+    };
+    return bless $self, $class;
+}
+
+sub die {
+    my ($self, $reason) = @_;
+    return if $self->{dead};
+    $self->{sth}->finish();
+    delete $statements{ $self->{db} }{ $self };
+    $self->{dead} = 1;
+    $self->{reason} = $reason;
+}
+
+sub DESTROY {
+    goto &die;
+}    
+
 package DBIx::Simple::Result;
 use Carp;
 use strict;
 
+sub EDEAD {
+    sprintf "Result object no longer usable (because of %s)",
+            $_[0]->{st}->{reason} || 'UNKNOWN'
+}
+
 sub new {
-    my ($class, $db, $sth) = @_;
+    my ($class, $st) = @_;
     # $db should be the stringified object, as a real reference
     # would increase the reference count.
     my $self = {
-	db  => $db,
-	sth => $sth
+	st  => $st,
     };
     return bless $self, $class;
 }
 
 sub list {
-    return $_[0]->{sth}->fetchrow_array if wantarray;
-    return($_[0]->{sth}->fetchrow_array)[0];
+    croak $_[0]->EDEAD if $_[0]->{st}->{dead};
+    return $_[0]->{st}->{sth}->fetchrow_array if wantarray;
+    return($_[0]->{st}->{sth}->fetchrow_array)[0];
 }
 
 sub array {
-    return $_[0]->{sth}->fetchrow_arrayref;
+    croak $_[0]->EDEAD if $_[0]->{st}->{dead};
+    return $_[0]->{st}->{sth}->fetchrow_arrayref;
 }
 
 sub hash {
-    return $_[0]->{sth}->fetchrow_hashref;
+    croak $_[0]->EDEAD if $_[0]->{st}->{dead};
+    return $_[0]->{st}->{sth}->fetchrow_hashref;
 }
 
 sub flat {
+    croak $_[0]->EDEAD if $_[0]->{st}->{dead};
     return map @$_, $_[0]->arrays;
 }
 
 sub arrays {
-    return @{ $_[0]->{sth}->fetchall_arrayref };
+    croak $_[0]->EDEAD if $_[0]->{st}->{dead};
+    return @{ $_[0]->{st}->{sth}->fetchall_arrayref };
 }
 
 sub hashes {
     my ($self) = @_;
+    croak $self->EDEAD if $self->{st}->{dead};
     my @return;
     my $dummy;
-    push @return, $dummy while $dummy = $self->{sth}->fetchrow_hashref;
+    push @return, $dummy while $dummy = $self->{st}->{sth}->fetchrow_hashref;
     return @return;
 }
 
 sub map_hashes {
     my ($self, $keyname) = @_;
+    croak $self->EDEAD if $self->{st}->{dead};
     croak 'Key column name not optional' if not defined $keyname;
     my @rows = $self->hashes;
     my @keys;
@@ -180,6 +238,7 @@ sub map_hashes {
 
 sub map_arrays {
     my ($self, $keyindex) = @_;
+    croak $self->EDEAD if $self->{st}->{dead};
     $keyindex += 0;
     my @rows = $self->arrays;
     my @keys;
@@ -193,19 +252,26 @@ sub map_arrays {
 
 sub map {
     my ($self) = @_;
+    croak $self->EDEAD if $self->{st}->{dead};
     return { map { $_->[0] => $_->[1] } $self->arrays };    
 }
 
 sub rows {
     my ($self) = @_;
-    return $self->{sth}->rows;
+    croak $self->EDEAD if $self->{st}->{dead};
+    return $self->{st}->{sth}->rows;
+}
+
+sub finish {
+    my ($self) = @_;
+    croak $self->EDEAD if $self->{st}->{dead};
+    $self->{st}->die(sprintf "$self->finish at %s line %d", (caller)[1, 2]);
 }
 
 sub DESTROY {
     my ($self) = @_;
-    delete $DBIx::Simple::results{ $self->{db} }{$self} if $self and $self->{db};
-    $self->{sth}->finish() if $self->{sth};
-    $self->{sth} = undef;
+    return if $self->{st}->{dead};
+    $self->{st}->die(sprintf "$self->DESTROY at %s line %d", (caller)[1, 2]);
 }
 
 1;
@@ -430,9 +496,9 @@ These just call the DBI methods and Do What You Mean.
 =item C<disconnect>
 
 Does What You Mean. Also note that the connection is automatically
-terminated when the object is destroyed (C<undef $db> to do so
-explicitly), and that all statements are also finished when the object
-is destroyed. C<disconnect> Does not destroy the object.
+terminated when the object is destroyed and that all statements
+are finished when the database object is destroyed. C<disconnect>
+also destroys all active statements.
 
 =back
 
@@ -490,11 +556,11 @@ row (other values will be discarded).
 Returns the number of rows. This function calls DBI's rows method, and
 may not do what you want. See L<DBI> for a good explanation.
 
-=item finish?
+=item C<finish>
 
-There is no finish method. To finish the statement, just let the object
-go out of scope (you should always use C<my>, and C<use strict>) or
-destroy it explicitly using C<undef $result>.
+Although it is much easier to just have the result object go out of scope,
+you can explicitly end the statement with this method. There should
+be no reason to use this method. Just let it go out of scope.
 
 =back
 

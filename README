@@ -30,6 +30,7 @@ NAME
 
 SYNOPSIS
   General
+
         #!/usr/bin/perl -w
         use strict;
         use DBIx::Simple;
@@ -47,6 +48,7 @@ SYNOPSIS
         # Abstracted example: $db->query($query, @variables)->what_you_want;
 
   Simple Queries
+
         $db->query('DELETE FROM foo WHERE id = ?', $id);
         die $db->{reason} if not $db->{success};
 
@@ -65,6 +67,7 @@ SYNOPSIS
         # (??) is expanded to (?, ?, ?, ?, ?, ?) automatically
 
   Single row queries
+
         my ($two)          = $db->query('SELECT 1 + 1')->list;
         my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
 
@@ -74,21 +77,27 @@ SYNOPSIS
         )->list;
 
   Fetching all rows in one go
+
    One big flattened list (primarily for single column queries)
+
         my @names = $db->query('SELECT name FROM people WHERE id > 5')->flat;
 
    Rows as array references
+
         for my $row ($db->query('SELECT name, email FROM people')->arrays) {
             print "Name: $row->[0], Email: $row->[1]\n";
         }
 
    Rows as hash references
+
         for my $row ($db->query('SELECT name, email FROM people')->hashes) {
             print "Name: $row->{name}, Email: $row->{email}\n";
         }
 
   Fetching one row at a time
+
    Rows as lists
+
         {
             my $result = $db->query('SELECT name, email FROM people');
             while (my @row = $result->list) {
@@ -97,6 +106,7 @@ SYNOPSIS
         }
 
    Rows as array references
+
         {
             my $result = $db->query('SELECT name, email FROM people');
             while (my $row = $result->array) {
@@ -105,6 +115,7 @@ SYNOPSIS
         }
 
    Rows as hash references
+
         {
             my $result = $db->query('SELECT name, email FROM people');
             while (my $row = $result->hash) {
@@ -113,7 +124,9 @@ SYNOPSIS
         }
 
   Building maps (also fetching all rows in one go)
+
    A hash of hashes
+
         my $customers =
             $db
             -> query('SELECT id, name, location FROM people')
@@ -122,6 +135,7 @@ SYNOPSIS
         # $customers = { $id => { name => $name, location => $location } }
 
    A hash of arrays
+
         my $customers =
             $db
             -> query('SELECT id, name, location FROM people')
@@ -130,6 +144,7 @@ SYNOPSIS
         # $customers = { $id => [ $name, $location ] }
 
    A hash of values (two-column queries)
+
         my $names =
             $db
             -> query('SELECT id, name FROM people')
@@ -138,6 +153,7 @@ SYNOPSIS
         # $names = { $id => $name }
 
   Subquery emulation
+
         $db->esq(1);
         my @projects = $db->query(
             '
@@ -167,10 +183,11 @@ DESCRIPTION
     which all methods return undef.
 
   DBIx::Simple object methods
+
     "DBIx::Simple->connect( ... )"
               This argument takes the exact arguments a normal
               "DBI->connect" would take. It's the constructor method, and it
-              returns a new DBIx::Simple object. See also DBI.
+              returns a new DBIx::Simple object. See also the DBI manpage.
 
     "query($query, @values)"
               This calls DBI's "prepare" and "execute" methods, passing the
@@ -194,8 +211,8 @@ DESCRIPTION
     "emulate_subqueries($bool)", "esq($bool)" - EXPERIMENTAL
               Sets if DBIx::Simple should enable subquery emulation. Many
               databases, like Postgres and SQLite have support for
-              subqueries built in. Some, like MySQL, have not. True (1)
-              enables, false (0) disables. Defaults to false.
+              subqueries built in. Some, like MySQL, have not. True ("1")
+              enables, false ("0") disables. Defaults to false.
 
               In normal MySQL, one would probably use "SELECT
               projects.project FROM projects, users WHERE project.user_id =
@@ -219,12 +236,12 @@ DESCRIPTION
 
     "disconnect"
               Does What You Mean. Also note that the connection is
-              automatically terminated when the object is destroyed ("undef
-              $db" to do so explicitly), and that all statements are also
-              finished when the object is destroyed. "disconnect" Does not
-              destroy the object.
+              automatically terminated when the object is destroyed and that
+              all statements are finished when the database object is
+              destroyed. "disconnect" also destroys all active statements.
 
   DBIx::Simple::Result object methods
+
     "new"     The constructor should only be called internally, by
               DBIx::Simple itself. Some simple minded garbage collection is
               done in DBIx::Simple, and you shouldn't be directly creating
@@ -262,12 +279,13 @@ DESCRIPTION
               returns two values per row (other values will be discarded).
 
     "rows"    Returns the number of rows. This function calls DBI's rows
-              method, and may not do what you want. See DBI for a good
-              explanation.
+              method, and may not do what you want. See the DBI manpage for
+              a good explanation.
 
-    finish?   There is no finish method. To finish the statement, just let
-              the object go out of scope (you should always use "my", and
-              "use strict") or destroy it explicitly using "undef $result".
+    "finish"  Although it is much easier to just have the result object go
+              out of scope, you can explicitly end the statement with this
+              method. There should be no reason to use this method. Just let
+              it go out of scope.
 
 FEEDBACK
     I'd like to hear from you what you think about DBIx::Simple, and if it
@@ -294,5 +312,5 @@ AUTHOR
     Juerd <juerd@cpan.org>
 
 SEE ALSO
-    DBI
+    the DBI manpage
 
