@@ -7,7 +7,7 @@ use vars qw($VERSION %results);
 
 my $omniholder = '(??)';
 
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 sub connect {
     my ($class, @arguments) = @_;
@@ -175,6 +175,8 @@ DBIx::Simple - An easy-to-use, object oriented interface to DBI
 
 =head1 SYNOPSIS
 
+=head2 General
+
     #!/usr/bin/perl -w
     use strict;
     use DBIx::Simple;
@@ -182,14 +184,14 @@ DBIx::Simple - An easy-to-use, object oriented interface to DBI
     my $db = DBIx::Simple->connect(
 	'DBI:mysql:database=test',     # DBI source specification
 	'test', 'test',                # Username and password
-	{ PrintError => 1 }            # Additional options
+	{ RaiseError => 1 }            # Additional options
     );
 
     # Abstracted example: $db->query($query, @variables)->what_you_want;
 
-    #### SIMPLE QUERIES
+=head2 Simple Queries
 
-    $db->query('DELETE FROM foo WHERE id=?', $id);
+    $db->query('DELETE FROM foo WHERE id = ?', $id);
     die $db->{reason} if not $db->{success};
 
     for (1..100) {
@@ -206,24 +208,46 @@ DBIx::Simple - An easy-to-use, object oriented interface to DBI
     );
     # (??) is expanded to (?, ?, ?, ?, ?, ?) automatically
 
-    #### SINGLE ROW QUERIES
+=head2 Single row queries
 
     my ($two)          = $db->query('SELECT 1 + 1')->list;
     my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
 
-    #### FETCHING ALL IN ONE GO
+    my ($name, $email) = $db=>query(
+	'SELECT name, email FROM people WHERE email = ? LIMIT 1',
+	$mail
+    )->list;
+
+=head2 Fetching all rows in one go
+
+=head3 One big flattened list (primarily for single column queries)
 
     my @names = $db->query('SELECT name FROM people WHERE id > 5')->flat;
+
+=head3 Rows as array references
 
     for my $row ($db->query('SELECT name, email FROM people')->arrays) {
 	print "Name: $row->[0], Email: $row->[1]\n";
     }
 
+=head3 Rows as hash references
+
     for my $row ($db->query('SELECT name, email FROM people')->hashes) {
 	print "Name: $row->{name}, Email: $row->{email}\n";
     }
 
-    #### FETCHING ONE ROW AT A TIME
+=head2 Fetching one row at a time
+
+=head3 Rows as lists
+
+    {
+	my $result = $db->query('SELECT name, email FROM people');
+	while (my @row = $result->list) {
+	    print "Name: $row[0], Email: $row[1]\n";
+	}
+    }
+
+=head3 Rows as array references
 
     {
 	my $result = $db->query('SELECT name, email FROM people');
@@ -232,32 +256,43 @@ DBIx::Simple - An easy-to-use, object oriented interface to DBI
 	}
     }
 
+=head3 Rows as hash references
+
     {
 	my $result = $db->query('SELECT name, email FROM people');
 	while (my $row = $result->hash) {
-	    print "Name: $row->{field1}, Email: $row->{field2}\n";
+	    print "Name: $row->{name}, Email: $row->{email}\n";
 	}
     }
 
-    #### BUILDING MAPS (also fetching all in one go)
+=head2 Building maps (also fetching all rows in one go)
 
-    # Hash of hashes
+=head3 A hash of hashes
+
     my $customers =
 	$db
 	-> query('SELECT id, name, location FROM people')
 	-> map_hashes('id');
 
-    # Hash of arrays
+    # $customers = { $id => { name => $name, location => $location } }
+
+=head3 A hash of arrays
+
     my $customers =
 	$db
 	-> query('SELECT id, name, location FROM people')
 	-> map_arrays(0);
 
-    # Hash of values
+    # $customers = { $id => [ $name, $location ] }
+
+=head3 A hash of values (two-column queries)
+
     my $names =
 	$db
 	-> query('SELECT id, name FROM people')
 	-> map;
+
+    # $names = { $id => $name }
 
 =head1 DESCRIPTION
 
@@ -265,11 +300,11 @@ This module is aimed at ease of use, not at SQL abstraction or
 efficiency. The only thing this module does is provide a bone easy
 interface to the already existing DBI module. With DBIx::Simple, the
 terms dbh and sth are not used in the documentation (except for this
-description), although they're omnipresent in the module's source.
-You don't have to think about them.
+description), although they're omnipresent in the module's source.  You
+don't have to think about them.
 
-A query returns a result object, that can be used directly to pick
-the sort of output you want.  There's no need to check if the query
+A query returns a result object, that can be used directly to pick the
+sort of output you want.  There's no need to check if the query
 succeeded in between calls, you can stack them safely, and check for
 success later. This is because failed queries have dummy results,
 objects of which all methods return undef.
@@ -280,22 +315,22 @@ objects of which all methods return undef.
 
 =item C<< DBIx::Simple->connect( ... ) >>
 
-This argument takes the exact arguments a normal DBI->connect()
+This argument takes the exact arguments a normal C<< DBI->connect >>
 would take. It's the constructor method, and it returns a new
-DBIx::Simple object.
+DBIx::Simple object.  See also L<DBI>.
 
 =item C<query($query, @values)>
 
-This calls DBI's prepare() and execute() methods, passing the values
-along to replace C<?> placeholders.  query() returns a new
-DBIx::Simple::Result object (or DBIx::Simple::Dummy), that can be
-used immediately to get data out of it. You should always use
-placeholders instead of the variables themselves, as DBI will
-automatically quote and escape the values.
+This calls DBI's C<prepare> and C<execute> methods, passing the values
+along to replace C<?> placeholders.  C<query> returns a new
+DBIx::Simple::Result object (or DBIx::Simple::Dummy), that can be used
+immediately to get data out of it.  You should always use placeholders
+instead of the variables themselves, as DBI will automatically quote and
+escape the values.
 
 DBIx::Simple provides an omniholder placeholder that will expand to
-C<(?, ?, ...)> with as many question marks as @values. There can be
-only one omniholder, and since it uses all given values, you shouldn't
+C<(?, ?, ...)> with as many question marks as @values. There can be only
+one omniholder, and since it uses all given values, you shouldn't
 combine it with normal placeholders. This feature was inspired by the
 EZDBI module.
 
@@ -313,8 +348,8 @@ These just call the DBI methods and Do What You Mean.
 
 Does What You Mean. Also note that the connection is automatically
 terminated when the object is destroyed (C<undef $db> to do so
-explicitly), and that all statements are also finished when the
-object is destroyed. disconnect() Does not destroy the object.
+explicitly), and that all statements are also finished when the object
+is destroyed. C<disconnect> Does not destroy the object.
 
 =back
 
@@ -325,36 +360,36 @@ object is destroyed. disconnect() Does not destroy the object.
 =item C<new>
 
 The constructor should only be called internally, by DBIx::Simple
-itself. Some simple minded garbage collection is done in
-DBIx::Simple, and you shouldn't be directly creating your own result
-objects. The curious are encouraged to read the module's source code
-to find out what the arguments to new() are.
+itself. Some simple minded garbage collection is done in DBIx::Simple,
+and you shouldn't be directly creating your own result objects. The
+curious are encouraged to read the module's source code to find out what
+the arguments to C<new> are.
 
 =item C<list>
 
-list() Returns a list of elements in a single row. This is like a
-dereferenced C<$result->array()>. In scalar context, returns only the
+C<list> Returns a list of elements in a single row. This is like a
+dereferenced C<< $result->array >>. In scalar context, returns only the
 first value of the row.
 
 =item C<array> and C<hash>
 
 These methods return a single row, in an array reference, or a hash
-reference, respectively.  Internally, fetchrow_arrayref or
-fetchrow_hashref is used.
+reference, respectively.  Internally, C<fetchrow_arrayref> or
+C<fetchrow_hashref> is used.
 
 =item C<flat>
 
-flat() Returns a list of all returned fields, flattened. This can be
-very useful if you select a single column. Consider to be 
-list()'s plural.
+C<flat> Returns a list of all returned fields, flattened. This can be
+very useful if you select a single column. Consider C<flat> to be
+C<list>'s plural.
 
 =item C<arrays> and C<hashes>
 
 These methods return a list of rows of array or hash references.
-Internally, fetchall_arrayref is dereferenced, or a lot of
-fetchrow_hashref returns are accumulated.
+Internally, C<fetchall_arrayref> is dereferenced, or a lot of
+C<fetchrow_hashref> returns are accumulated.
 
-=item C<map_arrays(column number)> and C<map_hashes(column name)>
+=item C<map_arrays($column_number)> and C<map_hashes($column_name)>
 
 These methods build a hash, with the chosen column as keys, and the
 remaining columns in array or hash references as values. For
@@ -363,51 +398,50 @@ first column). The methods return a reference to the built hash.
 
 =item C<map>
 
-Returns a reference to a hash that was built using the first two 
-columns as key/value pairs. Use this only if your query returns two
-values per row (other values will be discarded).
+Returns a reference to a hash that was built using the first two columns
+as key/value pairs. Use this only if your query returns two values per
+row (other values will be discarded).
 
 =item C<rows>
 
-Returns the number of rows. This function calls DBI's rows method,
-and may not do what you want. See L<DBI> for a good explanation.
+Returns the number of rows. This function calls DBI's rows method, and
+may not do what you want. See L<DBI> for a good explanation.
 
 =item finish?
 
-There is no finish method. To finish the statement, just let the
-object go out of scope (you should always use C<my>, and
-C<use strict>) or destroy it explicitly using C<undef $result>.
+There is no finish method. To finish the statement, just let the object
+go out of scope (you should always use C<my>, and C<use strict>) or
+destroy it explicitly using C<undef $result>.
 
 =back
 
 =head1 FEEDBACK
 
-This module has a very low version number for a reason. I'd like to
-hear from you what you think about DBIx::Simple, and if it has made
-your life easier :). If you find serious bugs, let me know.  If you
-think an important feature is missing, let me know (but I'm not
-going to implement functions that aren't used a lot, or that are
-only for effeciency, because this module has only one goal:
-simplicity).
+I'd like to hear from you what you think about DBIx::Simple, and if it
+has made your life easier :). If you find serious bugs, let me know.  If
+you think an important feature is missing, let me know (but I'm not
+going to implement functions that aren't used a lot, or that are only
+for effeciency, because this module has only one goal: simplicity). My
+    email address can be found near the end of this document.
 
 =head1 BUGS
 
-Nothing is perfect, but let's try to create perfect things. Of
-course, this module shares all DBI bugs. If you want to report a
-bug, please try to find out if it's DBIx::Simple's fault or DBI's
-fault first, and don't report DBI bugs to me.
+Nothing is perfect, but let's try to create perfect things. Of course,
+this module shares all DBI bugs. If you want to report a bug, please try
+to find out if it's DBIx::Simple's fault or DBI's fault first, and don't
+report DBI bugs to me.
 
 Note: the map functions do not check if the key values are unique. If
 they are not, keys are overwritten.
 
-=head1 USE THIS MODULE AT YOUR OWN RISK
+=head1 DISCLAIMER
 
 No warranty, no guarantees. I hereby disclaim all responsibility for
 what might go wrong.
 
 =head1 AUTHOR
 
-Juerd <juerd@juerd.nl>
+Juerd <juerd@cpan.org>
 
 =head1 SEE ALSO
 

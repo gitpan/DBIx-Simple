@@ -2,14 +2,21 @@ DBIx/Simple version 0.02
 ========================
 INSTALLATION
 
-To install this module type the following:
+To install this module do the following:
 
-   perl Makefile.PL
-   make
-   make test
-   make install
+   Download the .tar.gz
+   Unpack the .tar.gz,
+   Type:
+     perl Makefile.PL
+     make
+     make test
+     make install
 
-COPYRIGHT AND LICENCE
+Or, with the wonderful CPANPLUS module, just type in its shell:
+
+   i DBIx::Simple
+
+COPYRIGHT AND LICENSE
 
 Use this module the way you want to use it, but if anything goes wrong,
 it's not my fault :)
@@ -17,11 +24,11 @@ it's not my fault :)
 Copyright (C) 2002 J. Waalboer
 
 __POD2TEXT__
-
 NAME
     DBIx::Simple - An easy-to-use, object oriented interface to DBI
 
 SYNOPSIS
+  General
         #!/usr/bin/perl -w
         use strict;
         use DBIx::Simple;
@@ -29,74 +36,101 @@ SYNOPSIS
         my $db = DBIx::Simple->connect(
             'DBI:mysql:database=test',     # DBI source specification
             'test', 'test',                # Username and password
-            { PrintError => 1 }            # Additional options
+            { RaiseError => 1 }            # Additional options
         );
 
-        #### SIMPLE QUERIES
+        # Abstracted example: $db->query($query, @variables)->what_you_want;
 
-        $db->query('DELETE FROM foo');
-        die "$db->{reason} ($DBI::errstr)" if not $db->{success};
+  Simple Queries
+        $db->query('DELETE FROM foo WHERE id = ?', $id);
+        die $db->{reason} if not $db->{success};
 
         for (1..100) {
             $db->query(
-                'INSERT INTO foo VALUES (?, ?)',
+                'INSERT INTO randomvalues VALUES (?, ?)',
                 int rand(10),
                 int rand(10)
             );
         }
 
-        #### SINGLE ROW QUERIES
+        $db->query(
+            'INSERT INTO sometable VALUES (??)',
+            $first, $second, $third, $fourth, $fifth, $sixth
+        );
+        # (??) is expanded to (?, ?, ?, ?, ?, ?) automatically
 
+  Single row queries
         my ($two)          = $db->query('SELECT 1 + 1')->list;
         my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
 
-        #### FETCHING ALL IN ONE GO
+        my ($name, $email) = $db=>query(
+            'SELECT name, email FROM people WHERE email = ? LIMIT 1',
+            $mail
+        )->list;
 
-        my @names = $db->query('SELECT name FROM people WHERE foo > 5')->flat;
+  Fetching all rows in one go
+   One big flattened list (primarily for single column queries)
+        my @names = $db->query('SELECT name FROM people WHERE id > 5')->flat;
 
-        for my $row ($db->query('SELECT field1, field2 FROM foo')->arrays) {
-            print "--> $row->[0], $row->[1]\n";
+   Rows as array references
+        for my $row ($db->query('SELECT name, email FROM people')->arrays) {
+            print "Name: $row->[0], Email: $row->[1]\n";
         }
 
-        for my $row ($db->query('SELECT field1, field2 FROM foo')->hashes) {
-            print "--> $row->{field1}, $row->{field2}\n";
+   Rows as hash references
+        for my $row ($db->query('SELECT name, email FROM people')->hashes) {
+            print "Name: $row->{name}, Email: $row->{email}\n";
         }
 
-        #### FETCHING ONE ROW AT A TIME
-
+  Fetching one row at a time
+   Rows as lists
         {
-            my $result = $db->query('SELECT field1, field2 FROM foo');
+            my $result = $db->query('SELECT name, email FROM people');
+            while (my @row = $result->list) {
+                print "Name: $row[0], Email: $row[1]\n";
+            }
+        }
+
+   Rows as array references
+        {
+            my $result = $db->query('SELECT name, email FROM people');
             while (my $row = $result->array) {
-                print "--> $row->[0], $row->[1]\n";
+                print "Name: $row->[0], Email: $row->[1]\n";
             }
         }
 
+   Rows as hash references
         {
-            my $result = $db->query('SELECT field1, field2 FROM foo');
+            my $result = $db->query('SELECT name, email FROM people');
             while (my $row = $result->hash) {
-                print "--> $row->{field1}, $row->{field2}\n";
+                print "Name: $row->{name}, Email: $row->{email}\n";
             }
         }
 
-        #### BUILDING MAPS (also fetching all in one go)
-
-        # Hash of hashes
+  Building maps (also fetching all rows in one go)
+   A hash of hashes
         my $customers =
             $db
             -> query('SELECT id, name, location FROM people')
             -> map_hashes('id');
 
-        # Hash of arrays
+        # $customers = { $id => { name => $name, location => $location } }
+
+   A hash of arrays
         my $customers =
             $db
             -> query('SELECT id, name, location FROM people')
             -> map_arrays(0);
 
-        # Hash of values
+        # $customers = { $id => [ $name, $location ] }
+
+   A hash of values (two-column queries)
         my $names =
             $db
             -> query('SELECT id, name FROM people')
             -> map;
+
+        # $names = { $id => $name }
 
 DESCRIPTION
     This module is aimed at ease of use, not at SQL abstraction or
@@ -115,14 +149,27 @@ DESCRIPTION
   DBIx::Simple object methods
     "DBIx::Simple->connect( ... )"
               This argument takes the exact arguments a normal
-              DBI->connect() would take. It's the constructor method, and it
-              returns a new DBIx::Simple object.
+              "DBI->connect" would take. It's the constructor method, and it
+              returns a new DBIx::Simple object. See also DBI.
 
     "query($query, @values)"
-              This calls DBI's prepare() and execute() methods, passing the
-              values along to replace placeholders. query() returns a new
-              DBIx::Simple::Result object (or DBIx::Simple::Dummy), that can
-              be used immediately to get data out of it.
+              This calls DBI's "prepare" and "execute" methods, passing the
+              values along to replace "?" placeholders. "query" returns a
+              new DBIx::Simple::Result object (or DBIx::Simple::Dummy), that
+              can be used immediately to get data out of it. You should
+              always use placeholders instead of the variables themselves,
+              as DBI will automatically quote and escape the values.
+
+              DBIx::Simple provides an omniholder placeholder that will
+              expand to "(?, ?, ...)" with as many question marks as
+              @values. There can be only one omniholder, and since it uses
+              all given values, you shouldn't combine it with normal
+              placeholders. This feature was inspired by the EZDBI module.
+
+    "omniholder($new_value)"
+              This sets the omniholder string. Use "undef" or an empty
+              string to disable this feature. Please note that the given
+              $new_value is not a regex. The default omniholder is "(??)".
 
     "commit", "rollback"
               These just call the DBI methods and Do What You Mean.
@@ -131,8 +178,8 @@ DESCRIPTION
               Does What You Mean. Also note that the connection is
               automatically terminated when the object is destroyed ("undef
               $db" to do so explicitly), and that all statements are also
-              finished when the object is destoryed. disconnect() Does not
-              destory the object.
+              finished when the object is destroyed. "disconnect" Does not
+              destroy the object.
 
   DBIx::Simple::Result object methods
     "new"     The constructor should only be called internally, by
@@ -140,26 +187,27 @@ DESCRIPTION
               done in DBIx::Simple, and you shouldn't be directly creating
               your own result objects. The curious are encouraged to read
               the module's source code to find out what the arguments to
-              new() are.
+              "new" are.
 
-    "list"    list() Returns a list of elements in a single row. This is
-              like a dereferenced "$result-"array()>.
+    "list"    "list" Returns a list of elements in a single row. This is
+              like a dereferenced "$result->array". In scalar context,
+              returns only the first value of the row.
 
     "array" and "hash"
               These methods return a single row, in an array reference, or a
-              hash reference, respectively. Internally, fetchrow_arrayref or
-              fetchrow_hashref is used.
+              hash reference, respectively. Internally, "fetchrow_arrayref"
+              or "fetchrow_hashref" is used.
 
-    "flat"    flat() Returns a list of all returned fields, flattened. This
+    "flat"    "flat" Returns a list of all returned fields, flattened. This
               can be very useful if you select a single column. Consider
-              flat to be list()'s plural.
+              "flat" to be "list"'s plural.
 
     "arrays" and "hashes"
               These methods return a list of rows of array or hash
-              references. Internally, fetchall_arrayref is dereferenced, or
-              a lot of fetchrow_hashref returns are accumulated.
+              references. Internally, "fetchall_arrayref" is dereferenced,
+              or a lot of "fetchrow_hashref" returns are accumulated.
 
-    "map_arrays(column number)" and "map_hashes(column name)"
+    "map_arrays($column_number)" and "map_hashes($column_name)"
               These methods build a hash, with the chosen column as keys,
               and the remaining columns in array or hash references as
               values. For "map_arrays", the column number is optional and
@@ -170,20 +218,21 @@ DESCRIPTION
               two columns as key/value pairs. Use this only if your query
               returns two values per row (other values will be discarded).
 
-    "rows"    Returns the number of rows.
+    "rows"    Returns the number of rows. This function calls DBI's rows
+              method, and may not do what you want. See DBI for a good
+              explanation.
 
     finish?   There is no finish method. To finish the statement, just let
-              the object go out of scope (you should always use ""my"", and
-              ""use strict"") or destroy it explicitly using "undef
-              $result".
+              the object go out of scope (you should always use "my", and
+              "use strict") or destroy it explicitly using "undef $result".
 
 FEEDBACK
-    This module has a very low version number for a reason. I'd like to hear
-    from you what you think about DBIx::Simple, and if it has made your life
-    easier :). If you find serious bugs, let me know. If you think an
-    important feature is missing, let me know (but I'm not going to
-    implement functions that aren't used a lot, or that are only for
-    effeciency, because this module has only one goal: simplicity).
+    I'd like to hear from you what you think about DBIx::Simple, and if it
+    has made your life easier :). If you find serious bugs, let me know. If
+    you think an important feature is missing, let me know (but I'm not
+    going to implement functions that aren't used a lot, or that are only
+    for effeciency, because this module has only one goal: simplicity). My
+    email address can be found near the end of this document.
 
 BUGS
     Nothing is perfect, but let's try to create perfect things. Of course,
@@ -194,12 +243,12 @@ BUGS
     Note: the map functions do not check if the key values are unique. If
     they are not, keys are overwritten.
 
-USE THIS MODULE AT YOUR OWN RISK
+DISCLAIMER
     No warranty, no guarantees. I hereby disclaim all responsibility for
     what might go wrong.
 
 AUTHOR
-    Juerd <juerd@juerd.nl>
+    Juerd <juerd@cpan.org>
 
 SEE ALSO
     DBI

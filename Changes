@@ -1,15 +1,18 @@
 Revision history for Perl extension DBIx::Simple.
 
-0.03  Thu Jun 13 09:53:00 2002
+0.04  Tue Sep 17 15:46 2003
+	- Documentation updates only
+
+0.03  Thu Jun 13 09:50 2002
 	- New: (??) and omniholder() (like EZDBI's ??L placeholder)
 	- Documentation updates
 	- Code updates (now uses $_[0] directly for speed in many methods)
 	- list() in scalar context returns first value only
 
-0.02  Sat Mar 30 14:00:00 2002
+0.02  Sat Mar 30 14:00 2002
 	- New: commit() and rollback(). Suggested by `tradez' (perlmonks.org)
 	- New: map_hashes(), map_arrays(), map(). Suggested by `mattr' (perlmonks.org)
 	- New: flat(), a plural form of list()
 
-0.01  Thu Mar 28 18:04:00 2002
+0.01  Thu Mar 28 18:04 2002
 	- Initial release
