@@ -1,13 +1,12 @@
-package DBIx::Simple;
-
-use 5.006; # qr//, /(??{})/
-use DBI;
-use Carp;
+use 5.006;
 use strict;
+use DBI;
 
-my $omniholder = '(??)';
 
-our $VERSION = '0.09';
+package DBIx::Simple;
+use Carp;
+
+our $VERSION = '0.10';
 
 my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
 my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
@@ -17,15 +16,21 @@ my %statements;
 
 sub EDEAD {
     sprintf "Database object no longer usable (because of %s)",
-            $_[0]->{reason} || 'UNKNOWN'
+            $_[0]->{cause_of_death} || 'UNKNOWN'
 }
 
 sub connect {
     my ($class, @arguments) = @_;
-    my $self = {
-	dbi => DBI->connect(@arguments),
-	omniholder => '(??)',
-    };
+    my $self = { omniholder => '(??)' };
+    if (defined $arguments[0] and UNIVERSAL::isa($arguments[0], 'DBI::db')) {
+	$self->{dbi} = shift @arguments;
+	carp "Additional arguments for $class->connect are ignored"
+	    if @arguments;
+    } else {
+	$arguments[3]->{PrintError} = 0
+	    unless defined $arguments[3] and defined $arguments[3]{PrintError};
+	$self->{dbi} = DBI->connect(@arguments);
+    }
     return undef unless $self->{dbi};
     return bless $self, $class;
 }
@@ -37,6 +42,14 @@ sub omniholder {
     return $self->{omniholder} = $value if @_ > 1;
     return $self->{omniholder};
 }
+
+sub emulate_subqueries {
+    my ($self, $value) = @_;
+    $self->{esq} = ! !$value if @_ == 2;
+    return $self->{esq};
+}
+
+sub esq { goto &emulate_subqueries }
 
 sub query {
     my ($self, $query, @binds) = @_;
@@ -58,7 +71,7 @@ sub query {
 	}eg;
     }
 
-    # Subquery emulation
+    # Subquery interpolation
     if ($self->{esq}) {
 	while ($query =~ /$subquery_match/) {
 	    my $start  = $-[1];
@@ -82,18 +95,25 @@ sub query {
     }
     
     # Actual query
-    my $sth = $self->{dbi}->prepare($query) or do {
+    my $sth = eval { $self->{dbi}->prepare($query) } or do {
+	if ($@) {
+	    $@ =~ s/ at \S+ line \d+\.\n\z//;
+	    croak $@;
+	}
 	$self->{reason} = "Prepare failed ($DBI::errstr)";
 	return DBIx::Simple::Dummy->new();
     };
     
-    $sth->execute(@binds) or do {
+    eval { $sth->execute(@binds) } or do {
+	if ($@) {
+	    $@ =~ s/ at \S+ line \d+\.\n\z//;
+	    croak $@;
+	}
 	$self->{reason} = "Execute failed ($DBI::errstr)";
 	return DBIx::Simple::Dummy->new();
     };
 
     $self->{success} = 1;
-    my $result;
 
     # $self is quoted on purpose, to pass along the stringified version,
     # and avoid increasing reference count.
@@ -102,26 +122,26 @@ sub query {
     return DBIx::Simple::Result->new($st);
 }
 
+sub error {
+    croak $_[0]->EDEAD if $_[0]->{dead};
+    my $error = 'DBI error: ' . $_[0]->{dbi}->errstr;
+    return $error;
+}
+
 sub begin_work { croak $_[0]->EDEAD if $_[0]->{dead}; $_[0]->{dbi}->begin_work }
 sub commit     { croak $_[0]->EDEAD if $_[0]->{dead}; $_[0]->{dbi}->commit     }
 sub rollback   { croak $_[0]->EDEAD if $_[0]->{dead}; $_[0]->{dbi}->rollback   }
-
-sub emulate_subqueries {
-    my ($self, $value) = @_;
-    $self->{esq} = ! !$value if @_ == 2;
-    return $self->{esq};
-}
-
-sub esq { goto &emulate_subqueries }
+sub func       { croak $_[0]->EDEAD if $_[0]->{dead};
+                                                $_[0]->{dbi}->func(@_[1..$#_]) }
 
 sub die {
-    my ($self, $reason) = @_;
+    my ($self, $cause) = @_;
     return if $self->{dead};
-    $statements{$self}{$_}->die($reason) for keys %{ $statements{$self} };
+    $statements{$self}{$_}->die($cause) for keys %{ $statements{$self} };
     delete $statements{$self};
-    $self->{dbi}->disconnect() if defined $self->{dbi}; # XXX
+    $self->{dbi}->disconnect() if defined $self->{dbi};  # XXX
     $self->{dead} = 1;
-    $self->{reason} = $reason;
+    $self->{cause_of_death} = $cause;
 }
 
 sub disconnect {
@@ -135,11 +155,16 @@ sub DESTROY {
     $self->die(sprintf "$self->DESTROY at %s line %d", (caller)[1, 2]);
 }
 
+
 package DBIx::Simple::Dummy;
-use strict;
+
+use overload
+    '""' => sub { shift },
+    bool => sub { 0 };
 
 sub new      { bless \my $dummy, shift }
-sub AUTOLOAD { undef }
+sub AUTOLOAD { return }
+
 
 package DBIx::Simple::Statement;
 
@@ -159,20 +184,20 @@ sub die {
     $self->{sth}->finish();
     delete $statements{ $self->{db} }{ $self };
     $self->{dead} = 1;
-    $self->{reason} = $reason;
+    $self->{cause_of_death} = $reason;
 }
 
 sub DESTROY {
     goto &die;
 }    
 
+
 package DBIx::Simple::Result;
 use Carp;
-use strict;
 
 sub EDEAD {
     sprintf "Result object no longer usable (because of %s)",
-            $_[0]->{st}->{reason} || 'UNKNOWN'
+            $_[0]->{st}->{cause_of_death} || 'UNKNOWN'
 }
 
 sub new {
@@ -232,7 +257,7 @@ sub map_hashes {
     }
     my %return;
     @return{@keys} = @rows;
-    return \%return;
+    return wantarray ? %return : \%return;
 }
 
 sub map_arrays {
@@ -246,13 +271,14 @@ sub map_arrays {
     }
     my %return;
     @return{@keys} = @rows;
-    return \%return;
+    return wantarray ? %return : \%return;
 }
 
 sub map {
     my ($self) = @_;
     croak $self->EDEAD if $self->{st}->{dead};
-    return { map { $_->[0] => $_->[1] } $self->arrays };    
+    my %return = map { $_->[0] => $_->[1] } $self->arrays;
+    return wantarray ? %return : \%return;
 }
 
 sub rows {
@@ -281,7 +307,37 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
 =head1 SYNOPSIS
 
-=head2 General
+=head2 OVERVIEW
+
+=head3 DBIx::Simple
+ 
+    $db = DBIx::Simple->connect(...)  # or ->new
+
+    $db->omniholder         $db->emulate_subqueries  # or ->esq 
+
+    $db->begin_work         $db->commit
+    $db->rollback           $db->disconnect
+    $db->func(...)
+
+    $result = $db->query(...)
+
+=head3 DBIx::Simple::Result
+
+    @row = $result->list    @rows = $result->flat
+    $row = $result->array   @rows = $result->arrays
+    $row = $result->hash    @rows = $result->hashes
+
+    %map = $result->map_arrays(...)
+    %map = $result->map_hashes(...)
+    %map = $result->map
+
+    $rows = $result->rows
+
+    $result->finish
+
+=head2 EXAMPLES
+
+=head3 General
 
     #!/usr/bin/perl -w
     use strict;
@@ -290,26 +346,30 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
     # Instant database with DBD::SQLite
     my $db = DBIx::Simple->connect('dbi:SQLite:dbname=file.dat');
 
-    # MySQL database
+    # Connecting to a MySQL database
     my $db = DBIx::Simple->connect(
 	'DBI:mysql:database=test',     # DBI source specification
 	'test', 'test',                # Username and password
 	{ RaiseError => 1 }            # Additional options
     );
 
+    # Using an existing database handle
+    my $db = DBIx::Simple->connect($dbh);
+
     # Abstracted example: $db->query($query, @variables)->what_you_want;
 
-=head2 Simple Queries
+    $db->commit or die $db->error;
 
-    $db->query('DELETE FROM foo WHERE id = ?', $id);
-    die $db->{reason} if not $db->{success};
+=head3 Simple Queries
+
+    $db->query('DELETE FROM foo WHERE id = ?', $id) or die $db->error;
 
     for (1..100) {
 	$db->query(
 	    'INSERT INTO randomvalues VALUES (?, ?)',
 	    int rand(10),
 	    int rand(10)
-	);
+	) or die $db->error;
     }
 
     $db->query(
@@ -318,7 +378,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
     );
     # (??) is expanded to (?, ?, ?, ?, ?, ?) automatically
 
-=head2 Single row queries
+=head3 Single row queries
 
     my ($two)          = $db->query('SELECT 1 + 1')->list;
     my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
@@ -328,27 +388,27 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 	$mail
     )->list;
 
-=head2 Fetching all rows in one go
+=head3 Fetching all rows in one go
 
-=head3 One big flattened list (primarily for single column queries)
+=head4 One big flattened list (primarily for single column queries)
 
     my @names = $db->query('SELECT name FROM people WHERE id > 5')->flat;
 
-=head3 Rows as array references
+=head4 Rows as array references
 
     for my $row ($db->query('SELECT name, email FROM people')->arrays) {
 	print "Name: $row->[0], Email: $row->[1]\n";
     }
 
-=head3 Rows as hash references
+=head4 Rows as hash references
 
     for my $row ($db->query('SELECT name, email FROM people')->hashes) {
 	print "Name: $row->{name}, Email: $row->{email}\n";
     }
 
-=head2 Fetching one row at a time
+=head3 Fetching one row at a time
 
-=head3 Rows as lists
+=head4 Rows as lists
 
     {
 	my $result = $db->query('SELECT name, email FROM people');
@@ -357,7 +417,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 	}
     }
 
-=head3 Rows as array references
+=head4 Rows as array references
 
     {
 	my $result = $db->query('SELECT name, email FROM people');
@@ -366,7 +426,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 	}
     }
 
-=head3 Rows as hash references
+=head4 Rows as hash references
 
     {
 	my $result = $db->query('SELECT name, email FROM people');
@@ -375,9 +435,9 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 	}
     }
 
-=head2 Building maps (also fetching all rows in one go)
+=head3 Building maps (also fetching all rows in one go)
 
-=head3 A hash of hashes
+=head4 A hash of hashes
 
     my $customers =
 	$db
@@ -386,7 +446,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
     # $customers = { $id => { name => $name, location => $location } }
 
-=head3 A hash of arrays
+=head4 A hash of arrays
 
     my $customers =
 	$db
@@ -395,7 +455,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
     # $customers = { $id => [ $name, $location ] }
 
-=head3 A hash of values (two-column queries)
+=head4 A hash of values (two-column queries)
 
     my $names =
 	$db
@@ -404,196 +464,225 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
     # $names = { $id => $name }
 
-=head2 Subquery emulation
+=head3 Subquery emulation
 
     $db->esq(1);
-    my @projects = $db->query(
-	'
-	    SELECT project_name
-	    FROM   projects
-	    WHERE  user_id = (
-		SELECT id
-		FROM   users
-		WHERE  email = ?
-	    )
-	',
-	$email
-    )->flat;
+    my @projects = $db->query(q{
+	SELECT project_name
+	FROM   projects
+	WHERE  user_id = (
+	    SELECT id
+	    FROM   users
+	    WHERE  email = ?
+	)
+    }, $email )->flat;
 
 =head1 DESCRIPTION
 
-This module is aimed at ease of use, not at SQL abstraction or
-efficiency. The only thing this module does is provide a bone easy
-interface to the already existing DBI module. With DBIx::Simple, the
-terms dbh and sth are not used in the documentation (except for this
-description), although they're omnipresent in the module's source.  You
-don't have to think about them.
+DBIx::Simple provides a simplified interface to DBI, Perl's powerful database
+module.
 
-A query returns a result object, that can be used directly to pick the
-sort of output you want.  There's no need to check if the query
-succeeded in between calls, you can stack them safely, and check for
-success later. This is because failed queries have dummy results,
-objects of which all methods return undef.
+This module is aimed at rapid development and easy maintenance. Query
+preparation and execution are combined in a single method, the result object
+(which is a wrapper around the statement handle) provides easy row-by-row and
+slurping methods. 
 
-=head2 DBIx::Simple object methods
+The C<query> method returns either a result object, or a dummy object. The
+dummy object returns undef (or an empty list) for all methods and when used in
+boolean context, is false. The dummy object lets you postpone (or skip) error
+checking, but it also makes immediate error checking a simple C<< 
+$db->query(...) or die $db->{reason} >>.
+
+For users of poorly equipped databases (like MySQL), DBIx::Simple provides
+emulation of subqueries by interpolating intermediate results. For users of
+better database systems (like SQLite and PostgreSQL), the module provides
+direct access to DBI's transaction related methods.
+
+=head2 DBIx::Simple methods
 
 =over 10
 
-=item C<< DBIx::Simple->connect( ... ) >>
+=item C<< DBIx::Simple->connect($dbh) >>
 
-This argument takes the exact arguments a normal C<< DBI->connect >>
-would take. It's the constructor method, and it returns a new
-DBIx::Simple object.  See also L<DBI>.
+=item C<< DBIx::Simple->connect($dsn, $user, $pass, \%options) >>
 
-=item C<query($query, @values)>
+The C<connect> or C<new> class method takes either an existing DBI object
+($dbh), or a list of arguments to pass to C<< DBI->connect >>. See L<DBI> for a
+detailed description.
 
-This calls DBI's C<prepare> and C<execute> methods, passing the values
-along to replace C<?> placeholders.  C<query> returns a new
-DBIx::Simple::Result object (or DBIx::Simple::Dummy), that can be used
-immediately to get data out of it.  You should always use placeholders
-instead of the variables themselves, as DBI will automatically quote and
-escape the values.
+You cannot use this method to clone a DBIx::Simple object: the $dbh passed
+should be a DBI::db object, not a DBIx::Simple object.
 
-DBIx::Simple provides an omniholder placeholder that will expand to
-C<(?, ?, ...)> with as many question marks as @values. There can be only
-one omniholder, and since it uses all given values, you shouldn't
-combine it with normal placeholders. This feature was inspired by the
-EZDBI module.
+This method is the constructor and returns a DBIx::Simple object on success. On
+failure, it returns undef.
 
 =item C<omniholder($new_value)>
 
-This sets the omniholder string. Use C<undef> or an empty string to
-disable this feature. Please note that the given $new_value is not a
-regex. The default omniholder is C<(??)>.
+This returns the omniholder string, after setting a new string if one is given.
+Use a $new_value of C<undef> or an empty string to disable the omniholder
+feature. Note that the given $new_value is not a regular expression. The
+default omniholder is C<(??)>.
 
-=item C<emulate_subqueries($bool)>, C<esq($bool)> - EXPERIMENTAL
+As shown in the SYNOPSIS, you can use an omniholder to avoid having to count
+question marks. In a query, C<(??)> (or whatever string you set using this
+method) is replaced with C<(?, ?, ?, ...)>, with as many question marks as
+@values passed to the query method (see below).
 
-Sets if DBIx::Simple should enable subquery emulation. Many databases,
-like Postgres and SQLite have support for subqueries built in. Some,
-like MySQL, have not. True (C<1>) enables, false (C<0>) disables.
-Defaults to false.
+=item C<emulate_subqueries($bool)>, C<esq($bool)>
 
-In normal MySQL, one would probably use C<SELECT projects.project FROM
-projects, users WHERE project.user_id = users.id AND user.email = ?> to
-select the projects that belong to the user with a certain email
-address. Postgres people would write C<SELECT project FROM projects
-WHERE user_id = (SELECT id FROM users WHERE email = ?)> instead.
+DBIx::Simple can emulate nested subqueries (SELECT only) by executing them and
+interpolating the results. This methods enables or disables this feature.
+Subquery emulation is disabled by default, and should not be used if the
+database provides real subqueries.
 
-Subqueries can make complex queries readable, but MySQL doesn't have
-them and many people use MySQL. Now they can have subqueries too!
+Only subqueries like C<(SELECT ...)> (note the parentheses) are interpolated.
 
-Emulation is done by simply doing multiple queries.
+Please note that emulation is done by doing multiple queries and is not
+atomic, as it would be if the database supported real subqueries. The
+queries are executed independently.
 
-B<< This feature is experimental. Please let me know if it works and if
-you like it. Send your comments to <juerd@cpan.org>. Even if everything
-goes well, I'd like to get some feedback. >>
+=item C<error>
 
-=item C<commit>, C<rollback>
+Returns the error string of the last DBI method. See the discussion of "C<err>"
+and "C<errstr>" in L<DBI>.
 
-These just call the DBI methods and Do What You Mean.
+=item C<query($query, @values)>
+
+The C<query> method pepares and executes the query and returns a result object.
+
+If an omniholder (see above) is present in the query, it is replaced with a
+list of as many question marks as @values. If subquery emulation (see above) is
+enabled, subquery results are interpolated in the main query before the main
+query is executed.
+
+The database drivers substitute placeholders (question marks that do not appear
+in quoted literals) in the query with the given @values, after them escaping
+them. You should always use placeholders, and never use user input in database
+queries.
+
+On success, returns a DBIx::Simple::Result object and sets $db->{success} to 1.
+
+On failure, returns a DBIx::Simple::Dummy object and sets $db->{success} to 0.
+
+=item C<begin_work>, C<commit>, C<rollback>
+
+These transaction related methods call the DBI respective methods and
+Do What You Mean. See L<DBI> for details.
+
+=item C<func(...)>
+
+This calls the C<func> method of DBI. See L<DBI> for details.
 
 =item C<disconnect>
 
-Does What You Mean. Also note that the connection is automatically
-terminated when the object is destroyed and that all statements
-are finished when the database object is destroyed. C<disconnect>
-also destroys all active statements.
+Destroys (finishes) active statements and disconnects. Whenever the database
+object is destroyed, this happens automatically. After disconnecting, you can
+no longer use the database object or any of its result object.
 
 =back
 
-=head2 DBIx::Simple::Result object methods
+=head2 DBIx::Simple::Dummy
+
+The C<query> method of DBIx::Simple returns a dummy object on failure. Its
+methods all return an empty list or undef, depending on context. When used in
+boolean context, a dummy object evaluates to false.
+
+=head2 DBIx::Simple::Result methods
 
 =over 10
 
-=item C<new>
-
-The constructor should only be called internally, by DBIx::Simple
-itself. Some simple minded garbage collection is done in DBIx::Simple,
-and you shouldn't be directly creating your own result objects. The
-curious are encouraged to read the module's source code to find out what
-the arguments to C<new> are.
-
 =item C<list>
 
-C<list> Returns a list of elements in a single row. This is like a
-dereferenced C<< $result->array >>. In scalar context, returns only the
-first value of the row.
+Fetches a single row and returns a list of values. In scalar context, this
+returns only the first value.
 
-=item C<array> and C<hash>
+=item C<array>
 
-These methods return a single row, in an array reference, or a hash
-reference, respectively.  Internally, C<fetchrow_arrayref> or
-C<fetchrow_hashref> is used.
+Fetches a single row and returns an array reference.
+
+=item C<hash>
+
+Fetches a single row and returns a hash reference.
 
 =item C<flat>
 
-C<flat> Returns a list of all returned fields, flattened. This can be
-very useful if you select a single column. Consider C<flat> to be
-C<list>'s plural.
+Fetches all remaining rows and returns a flattened list.
 
-=item C<arrays> and C<hashes>
+=item C<arrays>
 
-These methods return a list of rows of array or hash references.
-Internally, C<fetchall_arrayref> is dereferenced, or a lot of
-C<fetchrow_hashref> returns are accumulated.
+Fetches all remaining rows and returns a list of array references.
 
-=item C<map_arrays($column_number)> and C<map_hashes($column_name)>
+=item C<hashes>
 
-These methods build a hash, with the chosen column as keys, and the
-remaining columns in array or hash references as values. For
-C<map_arrays>, the column number is optional and defaults to 0 (the
-first column). The methods return a reference to the built hash.
+Fetches all remaining rows and returns a list of hash references. 
+
+=item C<map_arrays($column_number)>
+
+Constructs a hash of array references keyed by the values in the chosen column.
+
+In scalar context, returns a reference to the hash.
+
+=item C<map_hashes($column_name)>
+
+Constructs a hash of hash references keyed by the values in the chosen column.
+
+In scalar context, returns a reference to the hash.
 
 =item C<map>
 
-Returns a reference to a hash that was built using the first two columns
-as key/value pairs. Use this only if your query returns two values per
-row (other values will be discarded).
+Constructs a simple hash, using the first two columns as key/value pairs.
+Should only be used with queries that return two columns.
+
+In scalar context, returns a reference to the hash.
 
 =item C<rows>
 
-Returns the number of rows. This function calls DBI's rows method, and
-may not do what you want. See L<DBI> for a good explanation.
+Returns the number of rows affected by the last row affecting command, or -1 if
+the number of rows is not known or not available.
+
+For SELECT statements, it is generally not possible to know how many rows are
+returned. MySQL does provide this information. See L<DBI> for a detailed
+explanation.
 
 =item C<finish>
 
-Although it is much easier to just have the result object go out of scope,
-you can explicitly end the statement with this method. There should
-be no reason to use this method. Just let it go out of scope.
+Finishes the statement. After finishing a statement, it can no longer be used.
+When the result object is destroyed, its statement handle is automatically
+finished and destroyed. There should be no reason to call this method
+explicitly; just let the result object go out of scope.
 
 =back
 
-=head1 FEEDBACK
+=head1 BUGS / TODO
 
-I'd like to hear from you what you think about DBIx::Simple, and if it
-has made your life easier :). If you find serious bugs, let me know.  If
-you think an important feature is missing, let me know (but I'm not
-going to implement functions that aren't used a lot, or that are only
-for effeciency, because this module has only one goal: simplicity). My
-email address can be found near the end of this document.
+Although this module has been tested thoroughly in production environments, it
+still has no automated test suite. If you want to write tests, please contact
+me.
 
-=head1 BUGS
+The mapping methods do not check whether the keys are unique. Rows that are
+fetched later overwrite earlier ones.
 
-Nothing is perfect, but let's try to create perfect things. Of course,
-this module shares all DBI bugs. If you want to report a bug, please try
-to find out if it's DBIx::Simple's fault or DBI's fault first, and don't
-report DBI bugs to me.
+PrintError is disabled by default. If you enable it, beware that it will report
+line numbers in DBIx/Simple.pm. 
 
-Note: the map functions do not check if the key values are unique. If
-they are not, keys are overwritten.
+Note: this module does not provide any SQL abstraction and never will. If you
+don't want to write SQL queries, use DBIx::Abstract.
 
 =head1 DISCLAIMER
 
-No warranty, no guarantees. I hereby disclaim all responsibility for
-what might go wrong.
+I disclaim all responsibility. Use this module at your own risk.
 
 =head1 AUTHOR
 
-Juerd <juerd@cpan.org>
+Juerd <juerd@cpan.org> - <http://juerd.nl/>
+
+Do you like DBIx::Simple? Or hate it? Have you found a bug? Do you want to
+suggest a feature? I love receiving e-mail from users, so please drop me a
+line. 
 
 =head1 SEE ALSO
 
-L<DBI>
+L<perl>, L<perlref>, L<DBI>
 
 =cut
 

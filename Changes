@@ -1,5 +1,23 @@
 Revision history for Perl extension DBIx::Simple.
 
+0.10  Thu Jan 9 10:03 2003
+	- Documentation rewrite!
+	- New: $db->error(). In an upcoming release, $db->{reason} will be
+	  removed.
+	- New: $db->func().
+	- Removed some unused variables.
+	- prepare() and execute() are now wrapped in eval { } to rewrite
+	  filename and line number if you use RaiseError
+	- $result->map_hashes(), $result->map_arrays() and $result->map() now
+	  return a list in list context. In scalar context, they still return
+	  a hash reference
+	- Dummy objects in boolean context now evaluate to false, so you can
+	  write "$db->query(...) or die $db->error;" but still be able to write
+	  "$db->query(...)->something()".
+	- Dummy object's methods now return an empty list in list context
+	  instead of undef. 
+	- PrintError now defaults to 0
+
 0.09  Sun Dec 8 5:59 2002
 	- $dbh->disconnect() only if the object's still there. This works
 	  around perl bug #18951. Something is killing objects during (or just
@@ -41,10 +59,10 @@ Revision history for Perl extension DBIx::Simple.
 
 0.02  Sat Mar 30 14:00 2002
 	- New: $db->commit() and rollback().
-	  Suggested by `tradez' (perlmonks.org)
+	  Suggested by tradez (perlmonks.org)
 	- New: $result->map_hashes(), map_arrays(), map().
-	  Suggested by `mattr' (perlmonks.org)
+	  Suggested by mattr (perlmonks.org)
 	- New: $result->flat(), a plural form of list()
 
 0.01  Thu Mar 28 18:04 2002
-	- Initial release
+	- Initial CPAN release
