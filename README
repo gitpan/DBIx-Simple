@@ -1,5 +1,5 @@
-DBIx/Simple version 0.02
-========================
+DBIx::Simple
+
 INSTALLATION
 
 To install this module do the following:
@@ -25,7 +25,8 @@ Copyright (C) 2002 J. Waalboer
 
 __POD2TEXT__
 NAME
-    DBIx::Simple - An easy-to-use, object oriented interface to DBI
+    DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating
+    subqueries
 
 SYNOPSIS
   General
@@ -33,6 +34,10 @@ SYNOPSIS
         use strict;
         use DBIx::Simple;
 
+        # Instant database with DBD::SQLite
+        my $db = DBIx::Simple->connect('dbi:SQLite:dbdbname=file.dat');
+
+        # MySQL database
         my $db = DBIx::Simple->connect(
             'DBI:mysql:database=test',     # DBI source specification
             'test', 'test',                # Username and password
@@ -132,6 +137,21 @@ SYNOPSIS
 
         # $names = { $id => $name }
 
+  Subquery emulation
+        $db->esq(1);
+        my @projects = $db->query(
+            '
+                SELECT project_name
+                FROM   projects
+                WHERE  user_id = (
+                    SELECT id
+                    FROM   users
+                    WHERE  email = ?
+                )
+            ',
+            $email
+        )->flat;
+
 DESCRIPTION
     This module is aimed at ease of use, not at SQL abstraction or
     efficiency. The only thing this module does is provide a bone easy
@@ -170,6 +190,29 @@ DESCRIPTION
               This sets the omniholder string. Use "undef" or an empty
               string to disable this feature. Please note that the given
               $new_value is not a regex. The default omniholder is "(??)".
+
+    "emulate_subqueries($bool)", "esq($bool)" - EXPERIMENTAL
+              Sets if DBIx::Simple should enable subquery emulation. Many
+              databases, like Postgres and SQLite have support for
+              subqueries built in. Some, like MySQL, have not. True (1)
+              enables, false (0) disables. Defaults to false.
+
+              In normal MySQL, one would probably use "SELECT
+              projects.project FROM projects, users WHERE project.user_id =
+              users.id AND user.email = ?" to select the projects that
+              belong to the user with a certain email address. Postgres
+              people would write "SELECT project FROM projects WHERE user_id
+              = (SELECT id FROM users WHERE email = ?)" instead.
+
+              Subqueries can make complex queries readable, but MySQL
+              doesn't have them and many people use MySQL. Now they can have
+              subqueries too!
+
+              Emulation is done by simply doing multiple queries.
+
+              This feature is experimental. Please let me know if it works
+              and if you like it. Send your comments to <juerd@cpan.org>.
+              Even if everything goes well, I'd like to get some feedback.
 
     "commit", "rollback"
               These just call the DBI methods and Do What You Mean.

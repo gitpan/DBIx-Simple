@@ -8,7 +8,7 @@ use vars qw($VERSION %results);
 
 my $omniholder = '(??)';
 
-$VERSION = '0.05';
+$VERSION = '0.06';
 
 my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
 my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;

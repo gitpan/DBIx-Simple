@@ -1,5 +1,8 @@
 Revision history for Perl extension DBIx::Simple.
 
+0.06  Fri Sep 20 10:55 2002
+	- Oops: forgot to update the README file; nothing serious
+
 0.05  Thu Sep 19 14:32 2002
 	- Added $db->begin_work
 	- No longer expanding the (??) omniholder inside quoted SQL
