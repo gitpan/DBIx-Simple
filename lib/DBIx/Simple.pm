@@ -4,12 +4,13 @@ use DBI;
 use Data::Swap ();
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.21';
+$DBIx::Simple::VERSION = '1.22';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
 my $quoted         = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
-my $queryfoo       = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
+my $queryfoo;
+   $queryfoo       = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
 my $subquery_match = qr/\(\s*(select\s+$queryfoo)\)/i;
 
 my %statements;       # "$db" => { "$st" => $st, ... }

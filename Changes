@@ -2,6 +2,11 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.22  Thu May 6 17:30 2004
+        - Changed the declaration of a variable so that it doesn't blow up
+          under 5.8.4's better strict. (This should also fix a still
+          undiscovered bug in the deprecated subquery emulation.)
+
 1.21  Thu Apr 29 14:40 2004
         - Removed two nonsense entries from the changelog. $db->array and
           $db->hash do NOT reuse.
