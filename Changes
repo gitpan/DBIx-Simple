@@ -1,5 +1,12 @@
 Revision history for Perl extension DBIx::Simple.
 
+1.11  Tue Mar 26 19:05 2003
+        - Documentation updates.
+        - list() now returns the *last* element in scalar context (was: first).
+        - hashes() and arrays() now return array references in scalar context.
+        - Migrated two properties to Attribute::Properties. (new dependency)
+        - $VERSION++.
+
 0.10  Thu Jan 9 10:03 2003
 	- Documentation rewrite!
 	- New: $db->error(). In an upcoming release, $db->{reason} will be

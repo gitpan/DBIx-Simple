@@ -1,12 +1,12 @@
 use 5.006;
 use strict;
+use Attribute::Property;
 use DBI;
-
 
 package DBIx::Simple;
 use Carp;
 
-our $VERSION = '0.10';
+our $VERSION = '1.11';
 
 my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
 my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
@@ -34,22 +34,11 @@ sub connect {
     return undef unless $self->{dbi};
     return bless $self, $class;
 }
+*new = \&connect;
 
-sub new { goto &connect; }
-
-sub omniholder {
-    my ($self, $value) = @_;
-    return $self->{omniholder} = $value if @_ > 1;
-    return $self->{omniholder};
-}
-
-sub emulate_subqueries {
-    my ($self, $value) = @_;
-    $self->{esq} = ! !$value if @_ == 2;
-    return $self->{esq};
-}
-
-sub esq { goto &emulate_subqueries }
+sub omniholder         : Property { not ref }
+sub emulate_subqueries : Property { not ref }
+*esq = \&emulate_subqueries;
 
 sub query {
     my ($self, $query, @binds) = @_;
@@ -57,9 +46,11 @@ sub query {
     $self->{success} = 0;
     
     # Replace (??) with (?, ?, ?, ...)
-    if (defined $self->{omniholder} and length $self->{omniholder}) {
+    
+    my $omniholder = $self->omniholder;
+    if (defined $omniholder and length $omniholder) {
 	my $omniholders = 0;
-	my $omniholder = quotemeta $self->{omniholder};
+	my $omniholder = quotemeta $omniholder;
 	$query =~ s[($omniholder|$quoted|(?!$omniholder).)]
 	{
 	    $1 eq $self->{omniholder}
@@ -72,7 +63,8 @@ sub query {
     }
 
     # Subquery interpolation
-    if ($self->{esq}) {
+
+    if ($self->emulate_subqueries) {
 	while ($query =~ /$subquery_match/) {
 	    my $start  = $-[1];
 	    my $length = $+[1] - $-[1];
@@ -95,6 +87,7 @@ sub query {
     }
     
     # Actual query
+    
     my $sth = eval { $self->{dbi}->prepare($query) } or do {
 	if ($@) {
 	    $@ =~ s/ at \S+ line \d+\.\n\z//;
@@ -213,7 +206,7 @@ sub new {
 sub list {
     croak $_[0]->EDEAD if $_[0]->{st}->{dead};
     return $_[0]->{st}->{sth}->fetchrow_array if wantarray;
-    return($_[0]->{st}->{sth}->fetchrow_array)[0];
+    return($_[0]->{st}->{sth}->fetchrow_array)[-1];
 }
 
 sub array {
@@ -233,7 +226,9 @@ sub flat {
 
 sub arrays {
     croak $_[0]->EDEAD if $_[0]->{st}->{dead};
-    return @{ $_[0]->{st}->{sth}->fetchall_arrayref };
+    return wantarray
+        ? @{ $_[0]->{st}->{sth}->fetchall_arrayref }
+        :    $_[0]->{st}->{sth}->fetchall_arrayref;
 }
 
 sub hashes {
@@ -242,7 +237,7 @@ sub hashes {
     my @return;
     my $dummy;
     push @return, $dummy while $dummy = $self->{st}->{sth}->fetchrow_hashref;
-    return @return;
+    return wantarray ? @return : \@return;
 }
 
 sub map_hashes {
@@ -300,6 +295,8 @@ sub DESTROY {
 }
 
 1;
+
+__END__
 
 =head1 NAME
 
@@ -383,7 +380,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
     my ($two)          = $db->query('SELECT 1 + 1')->list;
     my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
 
-    my ($name, $email) = $db=>query(
+    my ($name, $email) = $db->query(
 	'SELECT name, email FROM people WHERE email = ? LIMIT 1',
 	$mail
     )->list;
@@ -466,7 +463,8 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
 =head3 Subquery emulation
 
-    $db->esq(1);
+    $db->emulate_subqueries = 1;
+    
     my @projects = $db->query(q{
 	SELECT project_name
 	FROM   projects
@@ -594,7 +592,7 @@ boolean context, a dummy object evaluates to false.
 =item C<list>
 
 Fetches a single row and returns a list of values. In scalar context, this
-returns only the first value.
+returns only the last value.
 
 =item C<array>
 
@@ -612,21 +610,25 @@ Fetches all remaining rows and returns a flattened list.
 
 Fetches all remaining rows and returns a list of array references.
 
+In scalar context, returns an array reference.
+
 =item C<hashes>
 
 Fetches all remaining rows and returns a list of hash references. 
+
+In scalar context, returns an array reference.
 
 =item C<map_arrays($column_number)>
 
 Constructs a hash of array references keyed by the values in the chosen column.
 
-In scalar context, returns a reference to the hash.
+In scalar context, returns a hash reference.
 
 =item C<map_hashes($column_name)>
 
 Constructs a hash of hash references keyed by the values in the chosen column.
 
-In scalar context, returns a reference to the hash.
+In scalar context, returns a hash.
 
 =item C<map>
 
@@ -653,7 +655,7 @@ explicitly; just let the result object go out of scope.
 
 =back
 
-=head1 BUGS / TODO
+=head1 MISCELLANEOUS
 
 Although this module has been tested thoroughly in production environments, it
 still has no automated test suite. If you want to write tests, please contact
@@ -668,17 +670,15 @@ line numbers in DBIx/Simple.pm.
 Note: this module does not provide any SQL abstraction and never will. If you
 don't want to write SQL queries, use DBIx::Abstract.
 
-=head1 DISCLAIMER
+=head1 LICENSE
 
-I disclaim all responsibility. Use this module at your own risk.
+There is no license. This software was released into the public domain. Do with
+it what you want, but on your own risk. The author disclaims any
+responsibility.
 
 =head1 AUTHOR
 
-Juerd <juerd@cpan.org> - <http://juerd.nl/>
-
-Do you like DBIx::Simple? Or hate it? Have you found a bug? Do you want to
-suggest a feature? I love receiving e-mail from users, so please drop me a
-line. 
+Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>
 
 =head1 SEE ALSO
 

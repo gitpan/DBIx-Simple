@@ -2,28 +2,16 @@ DBIx::Simple
 
 INSTALLATION
 
-To install this module do the following:
+To install this module type the following:
 
-   Download the .tar.gz
-   Unpack the .tar.gz,
-   Type:
-     perl Makefile.PL
-     make
-     make test
-     make install
+   perl Makefile.PL
+   make
+   make test
+   make install
 
-Or, with the wonderful CPANPLUS module, just type in its shell:
+Or use CPANPLUS to automate the process.
 
-   i DBIx::Simple
-
-COPYRIGHT AND LICENSE
-
-Use this module the way you want to use it, but if anything goes wrong,
-it's not my fault :)
-
-Copyright (C) 2002 J. Waalboer
-
-__POD2TEXT__
+Module documentation:
 NAME
     DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating
     subqueries
@@ -98,7 +86,7 @@ SYNOPSIS
         my ($two)          = $db->query('SELECT 1 + 1')->list;
         my ($three, $four) = $db->query('SELECT 3, 2 + 2')->list;
 
-        my ($name, $email) = $db=>query(
+        my ($name, $email) = $db->query(
             'SELECT name, email FROM people WHERE email = ? LIMIT 1',
             $mail
         )->list;
@@ -168,7 +156,8 @@ SYNOPSIS
         # $names = { $id => $name }
 
    Subquery emulation
-        $db->esq(1);
+        $db->emulate_subqueries = 1;
+    
         my @projects = $db->query(q{
             SELECT project_name
             FROM   projects
@@ -284,7 +273,7 @@ DESCRIPTION
 
   DBIx::Simple::Result methods
     "list"    Fetches a single row and returns a list of values. In scalar
-              context, this returns only the first value.
+              context, this returns only the last value.
 
     "array"   Fetches a single row and returns an array reference.
 
@@ -295,20 +284,24 @@ DESCRIPTION
     "arrays"  Fetches all remaining rows and returns a list of array
               references.
 
+              In scalar context, returns an array reference.
+
     "hashes"  Fetches all remaining rows and returns a list of hash
               references.
+
+              In scalar context, returns an array reference.
 
     "map_arrays($column_number)"
               Constructs a hash of array references keyed by the values in
               the chosen column.
 
-              In scalar context, returns a reference to the hash.
+              In scalar context, returns a hash reference.
 
     "map_hashes($column_name)"
               Constructs a hash of hash references keyed by the values in
               the chosen column.
 
-              In scalar context, returns a reference to the hash.
+              In scalar context, returns a hash.
 
     "map"     Constructs a simple hash, using the first two columns as
               key/value pairs. Should only be used with queries that return
@@ -330,7 +323,7 @@ DESCRIPTION
               There should be no reason to call this method explicitly; just
               let the result object go out of scope.
 
-BUGS / TODO
+MISCELLANEOUS
     Although this module has been tested thoroughly in production
     environments, it still has no automated test suite. If you want to write
     tests, please contact me.
@@ -344,15 +337,13 @@ BUGS / TODO
     Note: this module does not provide any SQL abstraction and never will.
     If you don't want to write SQL queries, use DBIx::Abstract.
 
-DISCLAIMER
-    I disclaim all responsibility. Use this module at your own risk.
+LICENSE
+    There is no license. This software was released into the public domain.
+    Do with it what you want, but on your own risk. The author disclaims any
+    responsibility.
 
 AUTHOR
-    Juerd <juerd@cpan.org> - <http://juerd.nl/>
-
-    Do you like DBIx::Simple? Or hate it? Have you found a bug? Do you want
-    to suggest a feature? I love receiving e-mail from users, so please drop
-    me a line.
+    Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>
 
 SEE ALSO
     perl, perlref, DBI
