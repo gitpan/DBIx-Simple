@@ -1,6 +1,13 @@
 Revision history for Perl extension DBIx::Simple.
 
-0.04  Tue Sep 17 15:46 2003
+0.05  Thu Sep 19 14:32 2002
+	- Added $db->begin_work
+	- No longer expanding the (??) omniholder inside quoted SQL
+	- Subquery emulation! Have subqueries in MySQL! YAY!
+	  (Not enabled by default. Use $db->esq(1) to enable)
+	- This module now requires Perl >= 5.6
+
+0.04  Tue Sep 17 15:46 2002
 	- Documentation updates only
 
 0.03  Thu Jun 13 09:50 2002

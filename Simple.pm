@@ -1,5 +1,6 @@
 package DBIx::Simple;
 
+use 5.006; # qr//, /(??{})/
 use DBI;
 use Carp;
 use strict;
@@ -7,7 +8,11 @@ use vars qw($VERSION %results);
 
 my $omniholder = '(??)';
 
-$VERSION = '0.04';
+$VERSION = '0.05';
+
+my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
+my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
+my $subquery_match = qr/\(\s*(select\s+$queryfoo)\)/i;
 
 sub connect {
     my ($class, @arguments) = @_;
@@ -15,6 +20,7 @@ sub connect {
 	dbi => DBI->connect(@arguments),
 	omniholder => '(??)',
     };
+    $self->{dbi}->{TraceLevel}++;
     return undef unless $self->{dbi};
     return bless $self, $class;
 }
@@ -34,13 +40,45 @@ sub query {
     my ($self, $query, @binds) = @_;
     $self->{success} = 0;
     
+    # Replace (??) with (?, ?, ?, ...)
     if (defined $self->{omniholder} and length $self->{omniholder}) {
-	$query =~ s[\Q$self->{omniholder}\E]
-	           { '(' . join(', ', ('?') x @binds) . ')' }e;
-	croak 'There can be only one omniholder'
-	    if $query =~ /\Q$self->{omniholder}\E/;
+	my $omniholders = 0;
+	my $omniholder = quotemeta $self->{omniholder};
+	$query =~ s[($omniholder|$quoted|(?!$omniholder).)]
+	{
+	    $1 eq $self->{omniholder}
+	    ? do {
+		croak 'There can be only one omniholder' if $omniholders++;
+		'(' . join(', ', ('?') x @binds) . ')';
+	    }
+	    : $1
+	}eg;
+    }
+
+    # Subquery emulation
+    if ($self->{esq}) {
+	while ($query =~ /$subquery_match/) {
+	    my $start  = $-[1];
+	    my $length = $+[1] - $-[1];
+	    my $pre    = substr($query, 0, $start);
+	    my $match  = $1;
+	    
+	    substr $query, $start, $length, join(',',
+		map $self->{dbi}->quote($_),
+		$self->query(
+		    $match,
+		    splice(
+			@binds,
+			scalar grep($_ eq '?', $pre  =~ /\?|$quoted|[^?'"]+/g),
+			scalar grep($_ eq '?', $match=~ /\?|$quoted|[^?'"]+/g)
+		    )
+		)->flat
+	    );
+	    return DBIx::Simple::Dummy->new() if not $self->{success};
+	}
     }
     
+    # Actual query
     my $sth = $self->{dbi}->prepare($query) or do {
 	$self->{reason} = "Prepare failed ($DBI::errstr)";
 	return DBIx::Simple::Dummy->new();
@@ -56,16 +94,20 @@ sub query {
 
     # $self is quoted on purpose, to pass along the stringified version,
     # and avoid increasing reference count.
-    return $results{$self}{$result} = $result = DBIx::Simple::Result->new("$self", $sth);
+    return $results{$self}{$result} = $result =
+	DBIx::Simple::Result->new("$self", $sth);
 }
 
-sub commit {
-    $_[0]->{dbi}->commit();
-}
+sub begin_work { $_[0]->{dbi}->begin_work() }
+sub commit     { $_[0]->{dbi}->commit() }
+sub rollback   { $_[0]->{dbi}->rollback() }
 
-sub rollback {
-    $_[0]->{dbi}->rollback();
+sub emulate_subqueries {
+    my ($self, $value) = @_;
+    $self->{esq} = ! !$value if @_ == 2;
+    return $self->{esq};
 }
+sub esq { goto &emulate_subqueries }
 
 sub DESTROY {
     my ($self) = @_;
@@ -171,7 +213,7 @@ sub DESTROY {
 
 =head1 NAME
 
-DBIx::Simple - An easy-to-use, object oriented interface to DBI
+DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
 
 =head1 SYNOPSIS
 
@@ -181,6 +223,10 @@ DBIx::Simple - An easy-to-use, object oriented interface to DBI
     use strict;
     use DBIx::Simple;
 
+    # Instant database with DBD::SQLite
+    my $db = DBIx::Simple->connect('dbi:SQLite:dbdbname=file.dat');
+
+    # MySQL database
     my $db = DBIx::Simple->connect(
 	'DBI:mysql:database=test',     # DBI source specification
 	'test', 'test',                # Username and password
@@ -294,6 +340,22 @@ DBIx::Simple - An easy-to-use, object oriented interface to DBI
 
     # $names = { $id => $name }
 
+=head2 Subquery emulation
+
+    $db->esq(1);
+    my @projects = $db->query(
+	'
+	    SELECT project_name
+	    FROM   projects
+	    WHERE  user_id = (
+		SELECT id
+		FROM   users
+		WHERE  email = ?
+	    )
+	',
+	$email
+    )->flat;
+
 =head1 DESCRIPTION
 
 This module is aimed at ease of use, not at SQL abstraction or
@@ -339,6 +401,28 @@ EZDBI module.
 This sets the omniholder string. Use C<undef> or an empty string to
 disable this feature. Please note that the given $new_value is not a
 regex. The default omniholder is C<(??)>.
+
+=item C<emulate_subqueries($bool)>, C<esq($bool)> - EXPERIMENTAL
+
+Sets if DBIx::Simple should enable subquery emulation. Many databases,
+like Postgres and SQLite have support for subqueries built in. Some,
+like MySQL, have not. True (C<1>) enables, false (C<0>) disables.
+Defaults to false.
+
+In normal MySQL, one would probably use C<SELECT projects.project FROM
+projects, users WHERE project.user_id = users.id AND user.email = ?> to
+select the projects that belong to the user with a certain email
+address. Postgres people would write C<SELECT project FROM projects
+WHERE user_id = (SELECT id FROM users WHERE email = ?)> instead.
+
+Subqueries can make complex queries readable, but MySQL doesn't have
+them and many people use MySQL. Now they can have subqueries too!
+
+Emulation is done by simply doing multiple queries.
+
+B<< This feature is experimental. Please let me know if it works and if
+you like it. Send your comments to <juerd@cpan.org>. Even if everything
+goes well, I'd like to get some feedback. >>
 
 =item C<commit>, C<rollback>
 
@@ -422,7 +506,7 @@ has made your life easier :). If you find serious bugs, let me know.  If
 you think an important feature is missing, let me know (but I'm not
 going to implement functions that aren't used a lot, or that are only
 for effeciency, because this module has only one goal: simplicity). My
-    email address can be found near the end of this document.
+email address can be found near the end of this document.
 
 =head1 BUGS
 
