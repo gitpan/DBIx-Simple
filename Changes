@@ -1,5 +1,9 @@
 Revision history for Perl extension DBIx::Simple.
 
+0.07  Man Sep 30 7:48 2002
+	- Removed TraceLevel thing that caused DBI to output debugging info
+	- Very minor documentation update (removed 2 characters)
+
 0.06  Fri Sep 20 10:55 2002
 	- Oops: forgot to update the README file; nothing serious
 

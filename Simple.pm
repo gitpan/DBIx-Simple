@@ -8,7 +8,7 @@ use vars qw($VERSION %results);
 
 my $omniholder = '(??)';
 
-$VERSION = '0.06';
+$VERSION = '0.07';
 
 my $quoted = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
 my $queryfoo = qr/(?: [^()"']+ | (??{$quoted}) | \( (??{$queryfoo}) \) )*/x;
@@ -20,7 +20,6 @@ sub connect {
 	dbi => DBI->connect(@arguments),
 	omniholder => '(??)',
     };
-    $self->{dbi}->{TraceLevel}++;
     return undef unless $self->{dbi};
     return bless $self, $class;
 }
@@ -224,7 +223,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI, capable of emulating subqueries
     use DBIx::Simple;
 
     # Instant database with DBD::SQLite
-    my $db = DBIx::Simple->connect('dbi:SQLite:dbdbname=file.dat');
+    my $db = DBIx::Simple->connect('dbi:SQLite:dbname=file.dat');
 
     # MySQL database
     my $db = DBIx::Simple->connect(

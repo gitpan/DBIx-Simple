@@ -35,7 +35,7 @@ SYNOPSIS
         use DBIx::Simple;
 
         # Instant database with DBD::SQLite
-        my $db = DBIx::Simple->connect('dbi:SQLite:dbdbname=file.dat');
+        my $db = DBIx::Simple->connect('dbi:SQLite:dbname=file.dat');
 
         # MySQL database
         my $db = DBIx::Simple->connect(
