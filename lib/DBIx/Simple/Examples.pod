@@ -305,6 +305,48 @@ the XHTML_Table object can be used directly:
 
     print $table->output({ no_ucfirst => 1 });  # note the {}!
 
+=head1 EXAMPLES WITH Text::Table
+
+=over 8
+
+=item C<< $result->text("neat") >>
+
+Neither neat nor pretty, but useful for debugging. Uses DBI's C<neat_list>
+method. Doesn't display column names.
+
+    '1', 'Camel', 'mammal'
+    '2', 'Llama', 'mammal'
+    '3', 'Owl', 'bird'
+    '4', 'Juerd', undef
+
+=item C<< $result->text("table") >>
+
+Displays a simple table using ASCII lines.
+
+    id | animal |  type
+    ---+--------+-------
+     1 |  Camel | mammal
+     2 |  Llama | mammal
+     3 |  Owl   | bird
+     4 |  Juerd |
+
+=item C<< $result->text("box") >>
+
+Displays a simple table using ASCII lines, with an outside border.
+
+    +----+--------+--------+
+    | id | animal |  type  |
+    +----+--------+--------+
+    |  1 |  Camel | mammal |
+    |  2 |  Llama | mammal |
+    |  3 |  Owl   | bird   |
+    |  4 |  Juerd |        |
+    +----+--------+--------+
+
+=back
+
+For C<table> and C<box>, you need Anno Siegel's Text::Table module installed.
+
 =head1 LICENSE
 
 There is no license. This software was released into the public domain. Do with

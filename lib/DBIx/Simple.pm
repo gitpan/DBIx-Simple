@@ -4,7 +4,7 @@ use DBI;
 use Data::Swap ();
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.24';
+$DBIx::Simple::VERSION = '1.25';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -442,7 +442,31 @@ sub html {
 
 sub text {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
-    my ($self) = @_;
+    my ($self, $type) = @_;
+    my $text_table = defined $type && length $type
+        ? 0
+        : eval { require Text::Table; $type = 'table'; 1 };
+    $type ||= 'neat';
+    if ($type eq 'box' or $type eq 'table') {
+        my $box = $type eq 'box';
+        $text_table or require Text::Table;
+        my @columns = map +{ title => $_, align_title => 'center' },
+            @{ $self->{st}->{sth}->{NAME} };
+        my $c = 0;
+        splice @columns, $_ + $c++, 0, \' | ' for 1 .. $#columns;
+        my $table = Text::Table->new(
+            ($box ? \'| ' : ()),
+            @columns,
+            ($box ? \' |' : ())
+        );
+        $table->load($self->arrays);
+        my $rule = $table->rule(qw/- +/);
+        return join '', 
+            ($box ? $rule : ()),
+            $table->title, $rule, $table->body,
+            ($box ? $rule : ());
+    }
+    Carp::carp("Unknown type '$type'; using 'neat'") if $type ne 'neat';
     return join '', map DBI::neat_list($_) . "\n", $self->arrays;
 }
 
@@ -817,15 +841,15 @@ do the same as:
         no_ucfirst => 1
     );
 
-=item C<text>
+=item C<text($type)>
 
-Returns a string with a simple text representation of the data. Useful for
-debugging. Uses DBI's C<neat_list> method. Doesn't display column names.
+Returns a string with a simple text representation of the data. C<$type>
+can be any of: C<neat>, C<table>, C<box>. It defaults to C<table> if
+Text::Table is installed, to C<neat> if it is.
 
-    '1', 'Camel', 'mammal'
-    '2', 'Llama', 'mammal'
-    '3', 'Owl', 'bird'
-    '4', 'Juerd', undef
+I<C<table> and C<box> require that Anno Siegel's Text::Table module be
+installed. It is available from CPAN.>
+
 
 =item C<attr(...)>
 

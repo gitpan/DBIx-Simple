@@ -2,6 +2,10 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.25  Mon Jun 21 9:39 2004
+        - New: $result->text.
+        - This new method can use Anno Siegel's Text::Table (loaded on demand).
+
 1.24  Sun Jun 20 21:32 2004
         - New: $result->xto.
         - New: $result->html.
