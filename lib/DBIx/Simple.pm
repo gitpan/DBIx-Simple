@@ -4,7 +4,7 @@ use DBI;
 use Data::Swap ();
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.23';
+$DBIx::Simple::VERSION = '1.24';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -76,7 +76,7 @@ sub emulate_subqueries : lvalue {
     my $dummy;
 }
 sub esq : lvalue {
-    Carp::croak('esq  no longer exists (read the documentation)');
+    Carp::croak('esq no longer exists (read the documentation)');
     my $dummy;
 }
 
@@ -414,8 +414,36 @@ sub map {
 
 sub rows {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    $_[0]->{st}->{sth}->rows;
+}
+
+sub xto {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    require DBIx::XHTML_Table;
+    my $self = shift;
+    my $attr = ref $_[0] ? $_[0] : { @_ };
+    
+    # Old DBD::SQLite (.29) spits out garbage if done *after* fetching.
+    my $columns = $self->{st}->{sth}->{NAME};
+
+    return DBIx::XHTML_Table->new(
+        scalar $self->arrays, 
+        $columns,
+        $attr
+    );
+}
+
+sub html {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    my $self = shift;
+    my $attr = ref $_[0] ? $_[0] : { @_ };
+    return $self->xto($attr)->output($attr);
+}
+
+sub text {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
     my ($self) = @_;
-    return $self->{st}->{sth}->rows;
+    return join '', map DBI::neat_list($_) . "\n", $self->arrays;
 }
 
 sub finish {
@@ -445,7 +473,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI
 =head1 SYNOPSIS
 
 =head2 DBIx::Simple
- 
+
     $db = DBIx::Simple->connect(...)  # or ->new
 
     $db->keep_statements = 16
@@ -458,7 +486,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI
     $result = $db->query(...)
 
 =head2 DBIx::Simple + SQL::Abstract
-    
+
     $db->abstract = SQL::Abstract->new(...)
 
     $result = $db->select(...)
@@ -469,10 +497,10 @@ DBIx::Simple - Easy-to-use OO interface to DBI
 =head2 DBIx::Simple::Result
 
     @columns = $result->columns
-    
+
     $result->into($foo, $bar, $baz)
     $row = $result->fetch
-    
+
     @row = $result->list    @rows = $result->flat
     $row = $result->array   @rows = $result->arrays
     $row = $result->hash    @rows = $result->hashes
@@ -483,7 +511,15 @@ DBIx::Simple - Easy-to-use OO interface to DBI
 
     $rows = $result->rows
 
+    $dump = $result->text
+
     $result->finish
+
+=head2 DBIx::Simple::Result + DBIx::XHTML_Table
+
+    $html = $result->html(...)
+
+    $table_object = $result->xto(...)
 
 =head2 Examples
 
@@ -532,8 +568,8 @@ failure, it returns undef.
 Sets the object to use with the C<select>, C<insert>, C<update> and C<delete>
 methods. On first access, will create one with SQL::Abstract's default options.
 
-Requires that Nathan Wiger's SQL::Abstract module be installed. It is available
-from CPAN.
+I<Requires that Nathan Wiger's SQL::Abstract module be installed. It is available
+from CPAN.>
 
 In theory, you can assign any object to this property, as long as that object
 has these four methods, and they return a list suitable for use with the
@@ -541,7 +577,7 @@ C<query> method.
 
 =item C<emulate_subqueries = $bool>
 
-This property is gone forever. Use DBIx::Simple::ESQ if you need subquery
+This property is gone forever. Use DBIx::Simple::SQE if you need subquery
 emulation. Don't forget to read its documentation first.
 
 =item C<lc_columns = $bool>
@@ -741,6 +777,56 @@ For SELECT statements, it is generally not possible to know how many rows are
 returned. MySQL does provide this information. See L<DBI> for a detailed
 explanation.
 
+=item C<xto(%attr)>
+
+Returns a DBIx::XHTML_Table object, passing the constructor a reference to
+C<%attr>.
+
+I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed. 
+It is available from CPAN.>
+
+In general, using the C<html> method (described below) is much easier. C<xto> 
+is available in case you need more flexibility.
+
+This method ignores the C<lc_columns> property.
+
+=item C<html(%attr)>
+
+Returns an (X)HTML formatted table, using the DBIx::XHTML_Table module. Passes
+a reference to C<%attr> to both the constructor and the C<output> method. 
+
+I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed. 
+It is available from CPAN.>
+
+This method is a shortcut method. That means that
+
+    $result->html
+
+    $result->html(
+        tr => { bgcolor => [ 'silver', 'white' ] }, 
+        no_ucfirst => 1
+    )
+
+do the same as:
+
+    $result->xto->output
+
+    $result->xto(
+        tr => { bgcolor => [ 'silver', 'white' ] }
+    )->output(
+        no_ucfirst => 1
+    );
+
+=item C<text>
+
+Returns a string with a simple text representation of the data. Useful for
+debugging. Uses DBI's C<neat_list> method. Doesn't display column names.
+
+    '1', 'Camel', 'mammal'
+    '2', 'Llama', 'mammal'
+    '3', 'Owl', 'bird'
+    '4', 'Juerd', undef
+
 =item C<attr(...)>
 
 Returns a copy of an sth attribute (property). See L<DBI/"Statement Handle
@@ -785,7 +871,7 @@ Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>
 
 L<perl>, L<perlref>
 
-L<DBI>, L<DBIx::Simple::Examples>, L<SQL::Abstract>
+L<DBI>, L<DBIx::Simple::Examples>, L<SQL::Abstract>, L<DBIx::XHTML_Table>
 
 =cut
 

@@ -2,6 +2,14 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.24  Sun Jun 20 21:32 2004
+        - New: $result->xto.
+        - New: $result->html.
+        - These new methods use Jeffrey Hayes Anderson's DBIx::XHTML_Table
+          (loaded on demand).
+        - New: $result->text.
+        - Documentation =~ s/ESQ/SQE/g. (Reported by Larry Kos)
+
 1.23  Thu Jun 10 0:00 2004
         - New: DBIx::Simple::SQE.
         - New: $db->abstract.

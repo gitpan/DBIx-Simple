@@ -64,11 +64,11 @@ sub query {
 
 =head1 NAME
 
-DBIx::Simple::ESQ - Add subquery emulation to DBIx::Simple
+DBIx::Simple::SQE - Add subquery emulation to DBIx::Simple
 
 =head1 SYNOPSIS
 
-    my $db = DBIx::Simple::ESQ->connect(...);
+    my $db = DBIx::Simple::SQE->connect(...);
 
     my $result = $db->query(
         q[
@@ -86,7 +86,7 @@ DBIx::Simple::ESQ - Add subquery emulation to DBIx::Simple
 
 Is simply a more compact way of doing:
 
-    my $db = DBIx::Simple::ESQ->connect(...);
+    my $db = DBIx::Simple::SQE->connect(...);
 
     my $result = $db->query(
         sprintf(
@@ -119,7 +119,7 @@ Is simply a more compact way of doing:
 B<This module is not actively maintained.> In practice that means that if you
 find a bug, you'll have to fix it yourself or live with it. (Patches are
 welcome, though). If DBIx::Simple changes in a way that is incompatible with
-this module, ESQ will simply stop functioning correctly. Should you want to
+this module, SQE will simply stop functioning correctly. Should you want to
 take over maintenance of this module, let me know.
 
 This module extends DBIx::Simple by making C<query> emulate nested subqueries

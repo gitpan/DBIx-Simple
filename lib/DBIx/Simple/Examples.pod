@@ -229,7 +229,7 @@ Instead of:
         ],
         @data{'name', 'phone', 'address', ... }
     );
-    
+
 =head3 update, delete
 
     $db->update(
@@ -250,6 +250,60 @@ query and thus doesn't really have anything to do with the database module.
 But using the C<abstract> property, you can still easily access it:
 
     my $where = $db->abstract->where({ foo => $foo });
+
+=head1 EXAMPLES WITH DBIx::XHTML_Table
+
+If you have DBIx::XHTML_Table installed, you can use the result methods
+C<xto> and C<html>. 
+
+You should read L<DBIx::XHTML_Table>. These examples are not enough to fully
+understand what is going on. When reading that documentation, note that you
+don't have to pass hash references to DBIx::Simple's methods. It is supported,
+though.
+
+DBIx::XHTML_Table is loaded on demand.
+
+=head2 Overview
+
+To print a simple table, all you have to do is:
+
+    print $db->query('SELECT * FROM foo')->html;
+
+Of course, anything that produces a result object can be used. The same thing
+using the abstraction method C<select> would be:
+
+    print $db->select('foo', '*')->html;
+
+A DBIx::XHTML_Table object can be generated with the C<xto> (B<X>HTML_B<T>able
+B<O>bject) method:
+
+    my $table = $db->query($query)->xto;
+
+=head2 Passing attributes
+
+DBIx::Simple sends the attributes you pass to C<html> both to the constructor
+and the output method. This allows you to specify both HTML attributes (like 
+C<bgcolor>) and options for XHTML_Table (like C<no_ucfirst> and C<no_indent>)
+all at once:
+
+    print $result->html(
+        tr         => { bgcolor => [ qw/silver white/ ] },
+        no_ucfirst => 1
+    );
+
+=head2 Using an XHTML_Table object
+
+Not everything can be controlled by passing attributes. For full flexibility,
+the XHTML_Table object can be used directly:
+
+    my $table = $db->query($query)->xto(
+        tr => { bgcolor => [ qw/silver white/ ] }
+    );
+
+    $table->set_group('client', 1);
+    $table->calc_totals('credit', '%.2f');
+
+    print $table->output({ no_ucfirst => 1 });  # note the {}!
 
 =head1 LICENSE
 

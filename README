@@ -18,4 +18,6 @@ PREREQUISITES
 
 Optionally, SQL::Abstract can be used for added functionality.
 
+Optionally, DBIx::XHTML_Table can be used for added functionality.
+
 These modules are available from CPAN, http://cpan.org/
