@@ -2,6 +2,10 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.21  Thu Apr 29 14:40 2004
+        - Removed two nonsense entries from the changelog. $db->array and
+          $db->hash do NOT reuse.
+
 1.20  Tue Apr 27 11:15 2004
         - Almost a complete rewrite :)
         - $db->emulate_subqueries is now deprecated. Use a better database
@@ -23,9 +27,6 @@ Incompatible changes are marked with "!!".
         - New: $result->attr. (Suggested by Sean McMurray <smcmurray@cpan.org>)
         - $result->array now returns a copy instead of the same arrayref over
           and over. If you need maximum efficiency, use $result->fetch instead.
-        - Clarified in the documentation that $result->array always returns the
-          same reference.
-     !! - Made $result->hash always use the same reference.
         - Removed dependency on Attribute::Property to fix bugs with
           $db->emulate_subqueries and $db->omniholder in Perl 5.8.x.
      !! - As a result, archaic property assignment style no longer works.
