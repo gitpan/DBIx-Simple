@@ -2,8 +2,16 @@ Revision history for Perl extension DBIx::Simple.
 
 Incompatible changes are marked with "!!".
 
+1.27  Sun Mar 18 21:14 2007
+        - Bugfix: (??) was replaced when quoted
+        - Bugfix: \' escaping was assumed, but actually only MySQL uses that
+        - New: support \' escaping only for DBD::mysql
+        - New: test suite!
+        - Removed dependency on Data::Swap
+        - Removed compatibility package DBIx::Simple::SQE
+
 1.26  Tue Nov 30 14:25 2004
-        - Removed documentation and deprecation warning of emulate_subqueries.
+        - Removed documentation of emulate_subqueries.
         - Minor documentation fixes.
 
 1.25  Mon Jun 21 9:39 2004
@@ -31,7 +39,7 @@ Incompatible changes are marked with "!!".
           but this was too easy to add and doesn't hurt anyone who doesn't use
           it.
         - New: $db->begin, an alias for $db->begin_work.
-     !! - Removed: $db->emulate_subqueries, $db->esq. (But see 
+     !! - Removed: $db->emulate_subqueries, $db->esq. (But see
           DBIx::Simple::SQE.)
      !! - Removed: $db->omniholder. (Now a constant: always "(??)".)
 
@@ -99,7 +107,7 @@ Incompatible changes are marked with "!!".
           write "$db->query(...) or die $db->error;" but still be able to write
           "$db->query(...)->something()".
         - Dummy object's methods now return an empty list in list context
-          instead of undef. 
+          instead of undef.
         - PrintError now defaults to 0
 
 0.09  Sun Dec 8 5:59 2002

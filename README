@@ -14,7 +14,6 @@ Or use CPANPLUS to automate the process.
 PREREQUISITES
 
     DBI
-    Data::Swap
 
 Optionally, SQL::Abstract can be used for added functionality.
 

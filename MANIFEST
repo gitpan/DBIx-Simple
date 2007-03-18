@@ -3,8 +3,9 @@ Makefile.PL
 MANIFEST
 README
 t/DBIx-Simple.t
+t/sqlite.t
+t/swap.t
 lib/DBIx/Simple.pm
 lib/DBIx/Simple/Examples.pod
 lib/DBIx/Simple/Comparison.pod
-lib/DBIx/Simple/SQE.pm
 META.yml                                 Module meta-data (added by MakeMaker)

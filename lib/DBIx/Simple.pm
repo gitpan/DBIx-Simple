@@ -1,14 +1,14 @@
 use 5.006;
 use strict;
 use DBI;
-use Data::Swap ();
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.26';
+$DBIx::Simple::VERSION = '1.27';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
-my $quoted         = qr/'(?:\\.|[^\\']+)*'|"(?:\\.|[^\\"]+)*"/s;
+my $quoted         = qr/(?:'[^']*'|"[^"]*")*/;  # 'foo''bar' simply matches the (?:) twice
+my $quoted_mysql   = qr/(?:(?:[^\\']*(?:\\.[^\\']*)*)'|"(?:[^\\"]*(?:\\.[^\\"]*)*)")*/;
 
 my %statements;       # "$db" => { "$st" => $st, ... }
 my %old_statements;   # "$db" => [ [ $query, $st ], ... ]
@@ -22,6 +22,15 @@ package DBIx::Simple;
 ### private helper subs
 
 sub _dummy { bless \my $dummy, 'DBIx::Simple::Dummy' }
+sub _swap {
+    my ($hash1, $hash2) = @_;
+    my $tempref = ref $hash1;
+    my $temphash = { %$hash1 };
+    %$hash1 = %$hash2;
+    bless $hash1, ref $hash2;
+    %$hash2 = %$temphash;
+    bless $hash2, $tempref;
+}
 
 if (eval { require Want }) {
     *_want    = *Want::want;
@@ -43,15 +52,16 @@ sub connect {
 	    unless defined $arguments[3] and defined $arguments[3]{PrintError};
 	$self->{dbh} = DBI->connect(@arguments);
     }
-    
+
     return undef unless $self->{dbh};
-    
+
+    $self->{dbd} = $self->{dbh}->{Driver}->{Name};
     bless $self, $class;
-    
+
     $statements{$self}      = {};
     $old_statements{$self}  = [];
     $keep_statements{$self} = 16;
-    
+
     return $self;
 }
 
@@ -73,15 +83,13 @@ sub abstract : lvalue {
 
 ### private methods
 
-# Used by SQE to get the regex (so not really private)
-sub _gimme_regex { no strict 'refs'; *{ caller() . '::quoted' } = \$quoted; }
-
 # Replace (??) with (?, ?, ?, ...)
 sub _replace_omniholder {
     my ($self, $query, $binds) = @_;
     return if $$query !~ /\(\?\?\)/;
     my $omniholders = 0;
-    $$query =~ s[(\(\?\?\)|$quoted+|(?:(?!\(\?\?\)).)+)] {
+    my $q = $self->{dbd} =~ /mysql/ ? $quoted_mysql : $quoted;
+    $$query =~ s[($q|\(\?\?\))] {
         $1 eq '(??)'
         ? do {
             Carp::croak('There can be only one omniholder')
@@ -90,14 +98,14 @@ sub _replace_omniholder {
         }
         : $1
     }eg;
-}   
+}
 
 # Invalidate and clean up
 sub _die {
     my ($self, $cause) = @_;
 
     defined and $_->_die($cause, 0)
-        for values %{ $statements{$self} }, 
+        for values %{ $statements{$self} },
         map $$_[1], @{ $old_statements{$self} };
     delete $statements{$self};
     delete $old_statements{$self};
@@ -107,7 +115,7 @@ sub _die {
     # during global destruction.
     $self->{dbh}->disconnect() if defined $self->{dbh};
 
-    Data::Swap::swap(
+    _swap(
         $self,
         bless {
             what  => 'Database object',
@@ -121,12 +129,12 @@ sub _die {
 sub query {
     my ($self, $query, @binds) = @_;
     $self->{success} = 0;
-   
+
     $self->_replace_omniholder(\$query, \@binds);
-    
+
     my $st;
     my $sth;
-   
+
     my $old = $old_statements{$self};
 
     if (my $i = (grep $old->[$_][0] eq $query, 0..$#$old)[0]) {
@@ -186,7 +194,7 @@ sub last_insert_id {
     	"DBI v1.38 required for last_insert_id" .
 	"--this is only $self->{dbi_version}, stopped"
     );
-    
+
     return $self->{dbh}->last_insert_id(@_[1..$#_]);
 }
 
@@ -225,7 +233,7 @@ sub _die {
     my ($self) = @_;
     Carp::croak(
         sprintf(
-            "(This should NEVER happen!) " . 
+            "(This should NEVER happen!) " .
             sprintf($err_message, $self->{what}),
             $self->{cause}
         )
@@ -247,20 +255,20 @@ package DBIx::Simple::Statement;
 
 sub _die {
     my ($self, $cause, $save) = @_;
-    
+
     $self->{sth}->finish() if defined $self->{sth};
     $self->{dead} = 1;
 
     my $stringy_db = "$self->{db}";
     my $stringy_self = "$self";
-    
+
     my $foo = bless {
         what  => 'Statement object',
         cause => $cause
     }, 'DBIx::Simple::DeadObject';
-    
-    Data::Swap::swap($self, $foo);
-    
+
+    DBIx::Simple::_swap($self, $foo);
+
     my $old = $old_statements{ $foo->{db} };
     my $keep = $keep_statements{ $foo->{db} };
 
@@ -276,8 +284,8 @@ sub _die {
 sub DESTROY {
     # This better only happen during global destruction...
     return if $_[0]->{dead};
-    $_[0]->_die('Ehm', 0); 
-}    
+    $_[0]->_die('Ehm', 0);
+}
 
 package DBIx::Simple::Result;
 
@@ -285,7 +293,7 @@ sub _die {
     my ($self, $cause) = @_;
     if ($cause) {
         $self->{st}->_die($cause, 1);
-        Data::Swap::swap(
+        DBIx::Simple::_swap(
             $self,
             bless {
                 what  => 'Result object',
@@ -294,7 +302,7 @@ sub _die {
         );
     } else {
         $cause = $self->{st}->{cause};
-        Data::Swap::swap(
+        DBIx::Simple::_swap(
             $self,
             bless {
                 what  => 'Result object',
@@ -340,7 +348,7 @@ sub list {
 
 sub array {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
-    my $row = $_[0]->{st}->{sth}->fetchrow_arrayref or return; 
+    my $row = $_[0]->{st}->{sth}->fetchrow_arrayref or return;
     return [ @$row ];
 }
 
@@ -413,12 +421,12 @@ sub xto {
     require DBIx::XHTML_Table;
     my $self = shift;
     my $attr = ref $_[0] ? $_[0] : { @_ };
-    
+
     # Old DBD::SQLite (.29) spits out garbage if done *after* fetching.
     my $columns = $self->{st}->{sth}->{NAME};
 
     return DBIx::XHTML_Table->new(
-        scalar $self->arrays, 
+        scalar $self->arrays,
         $columns,
         $attr
     );
@@ -452,7 +460,7 @@ sub text {
         );
         $table->load($self->arrays);
         my $rule = $table->rule(qw/- +/);
-        return join '', 
+        return join '',
             ($box ? $rule : ()),
             $table->title, $rule, $table->body,
             ($box ? $rule : ());
@@ -548,12 +556,12 @@ module.
 This module is aimed at rapid development and easy maintenance. Query
 preparation and execution are combined in a single method, the result object
 (which is a wrapper around the statement handle) provides easy row-by-row and
-slurping methods. 
+slurping methods.
 
 The C<query> method returns either a result object, or a dummy object. The
 dummy object returns undef (or an empty list) for all methods and when used in
 boolean context, is false. The dummy object lets you postpone (or skip) error
-checking, but it also makes immediate error checking simply C<< 
+checking, but it also makes immediate error checking simply C<<
 $db->query(...) or die $db->error >>.
 
 =head2 DBIx::Simple methods
@@ -600,7 +608,7 @@ true by default.
 
 Sets the number of statement objects that DBIx::Simple can keep for reuse. This
 can dramatically speed up repeated queries (like when used in a loop).
-C<keep_statements> is 16 by default. 
+C<keep_statements> is 16 by default.
 
 A query is only reused if it equals a previously used one literally. This means
 that to benefit from this caching mechanism, you must use placeholders and
@@ -726,7 +734,7 @@ Combines C<bind> with C<fetch>. Returns what C<fetch> returns.
 
 =item C<list>
 
-Fetches a single row and returns a list of values. In scalar context, 
+Fetches a single row and returns a list of values. In scalar context,
 returns only the last value.
 
 =item C<array>
@@ -751,7 +759,7 @@ In scalar context, returns an array reference.
 
 =item C<hashes>
 
-Fetches all remaining rows and returns a list of hash references. 
+Fetches all remaining rows and returns a list of hash references.
 
 In scalar context, returns an array reference.
 
@@ -790,10 +798,10 @@ explanation.
 Returns a DBIx::XHTML_Table object, passing the constructor a reference to
 C<%attr>.
 
-I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed. 
+I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed.
 It is available from CPAN.>
 
-In general, using the C<html> method (described below) is much easier. C<xto> 
+In general, using the C<html> method (described below) is much easier. C<xto>
 is available in case you need more flexibility.
 
 This method ignores the C<lc_columns> property.
@@ -801,9 +809,9 @@ This method ignores the C<lc_columns> property.
 =item C<html(%attr)>
 
 Returns an (X)HTML formatted table, using the DBIx::XHTML_Table module. Passes
-a reference to C<%attr> to both the constructor and the C<output> method. 
+a reference to C<%attr> to both the constructor and the C<output> method.
 
-I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed. 
+I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed.
 It is available from CPAN.>
 
 This method is a shortcut method. That means that
@@ -811,7 +819,7 @@ This method is a shortcut method. That means that
     $result->html
 
     $result->html(
-        tr => { bgcolor => [ 'silver', 'white' ] }, 
+        tr => { bgcolor => [ 'silver', 'white' ] },
         no_ucfirst => 1
     )
 
@@ -855,15 +863,11 @@ explicitly; just let the result object go out of scope.
 
 =head1 MISCELLANEOUS
 
-Although this module has been tested thoroughly in production environments, it
-still has no automated test suite. If you want to write tests, please contact
-me.
-
 The mapping methods do not check whether the keys are unique. Rows that are
 fetched later overwrite earlier ones.
 
 PrintError is disabled by default. If you enable it, beware that it will report
-line numbers in DBIx/Simple.pm. 
+line numbers in DBIx/Simple.pm.
 
 =head1 LICENSE
 
