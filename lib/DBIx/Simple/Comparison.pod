@@ -71,8 +71,8 @@ DBI
 
  $sth->{NAME_lc/NAME}      =  $result->columns
 
-*1 There's no fetch variant, but you can do C<<{ @{
-$dbh->selectcol_arrayref('SELECT ...', { Slice => [] }) } }>>.
+*1 There's no fetch variant, but you can do C<< { @{
+$dbh->selectcol_arrayref('SELECT ...', { Slice => [] }) } } >>.
 
 *2 To receive the keys (column names) lowercased, use C<<
 $db->{FetchHashKeyName} = 'NAME_lc' >>. DBIx::Simple lower cases them by

@@ -3,6 +3,9 @@ Revision history for Perl extension DBIx::Simple.
 Incompatible changes are marked with "!!". Incompatibility with and changes in
 "undocumented features" are not always specifically mentioned here.
 
+1.29  Web Apr 4 2:22 2007
+        - Fixed documentation typo.
+
 1.28  Wed Apr 4 2:16 2007
         - New: $db->result_class. This allows using a custom subclass.
         - $result->flat now returns an array reference in scalar context.
