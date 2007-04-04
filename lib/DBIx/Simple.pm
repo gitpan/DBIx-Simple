@@ -3,7 +3,7 @@ use strict;
 use DBI;
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.27';
+$DBIx::Simple::VERSION = '1.28';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -42,7 +42,7 @@ if (eval { require Want }) {
 
 sub connect {
     my ($class, @arguments) = @_;
-    my $self = { lc_columns => 1 };
+    my $self = { lc_columns => 1, result_class => 'DBIx::Simple::Result' };
     if (defined $arguments[0] and UNIVERSAL::isa($arguments[0], 'DBI::db')) {
 	$self->{dbh} = shift @arguments;
 	Carp::carp("Additional arguments for $class->connect are ignored")
@@ -74,6 +74,7 @@ sub new {
 
 sub keep_statements : lvalue { $keep_statements{ $_[0] } }
 sub lc_columns      : lvalue { $_[0]->{lc_columns} }
+sub result_class    : lvalue { $_[0]->{result_class} }
 
 sub abstract : lvalue {
     require SQL::Abstract;
@@ -172,7 +173,7 @@ sub query {
 
     $self->{success} = 1;
 
-    return bless { st => $st, lc_columns => $self->{lc_columns} }, 'DBIx::Simple::Result';
+    return bless { st => $st, lc_columns => $self->{lc_columns} }, $self->{result_class};
 }
 
 sub error {
@@ -185,7 +186,7 @@ sub begin_work     { $_[0]->{dbh}->begin_work }
 sub begin          { $_[0]->begin_work        }
 sub commit         { $_[0]->{dbh}->commit     }
 sub rollback       { $_[0]->{dbh}->rollback   }
-sub func           { $_[0]->{dbh}->func(@_[1..$#_]) }
+sub func           { shift->{dbh}->func(@_)   }
 
 sub last_insert_id {
     my ($self) = @_;
@@ -195,7 +196,7 @@ sub last_insert_id {
 	"--this is only $self->{dbi_version}, stopped"
     );
 
-    return $self->{dbh}->last_insert_id(@_[1..$#_]);
+    return shift->{dbh}->last_insert_id(@_);
 }
 
 sub disconnect {
@@ -318,7 +319,7 @@ sub _die {
     }
 }
 
-sub func { $_[0]->{st}->{sth}->func(@_[1..$#_]) }
+sub func { shift->{st}->{sth}->func(@_) }
 sub attr { my $dummy = $_[0]->{st}->{sth}->{$_[1]} }
 
 sub columns {
@@ -332,13 +333,17 @@ sub bind {
     $_[0]->{st}->{sth}->bind_columns(\@_[1..$#_]);
 }
 
+sub fetch {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    return $_[0]->{st}->{sth}->fetch;
+}
+
 sub into {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
     my $sth = $_[0]->{st}->{sth};
     $sth->bind_columns(\@_[1..$#_]) if @_ > 1;
     return $sth->fetch;
 }
-*fetch = \&into;  # This class isn't subclassable anyway.
 
 sub list {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
@@ -361,14 +366,14 @@ sub hash {
 
 sub flat {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
-    return map @$_, $_[0]->arrays;
+    return   map @$_, $_[0]->arrays if wantarray;
+    return [ map @$_, $_[0]->arrays ];
 }
 
 sub arrays {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
-    return wantarray
-        ? @{ $_[0]->{st}->{sth}->fetchall_arrayref }
-        :    $_[0]->{st}->{sth}->fetchall_arrayref;
+    return @{ $_[0]->{st}->{sth}->fetchall_arrayref } if wantarray;
+    return    $_[0]->{st}->{sth}->fetchall_arrayref;
 }
 
 sub hashes {
@@ -406,9 +411,8 @@ sub map_arrays {
 
 sub map {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
-    my ($self) = @_;
-    my %return = map { $_->[0] => $_->[1] } $self->arrays;
-    return wantarray ? %return : \%return;
+    return   map @$_, @{ $_[0]->{st}->{sth}->fetchall_arrayref } if wantarray;
+    return { map @$_, @{ $_[0]->{st}->{sth}->fetchall_arrayref } };
 }
 
 sub rows {
@@ -501,6 +505,7 @@ DBIx::Simple - Easy-to-use OO interface to DBI
 
     $db->keep_statements = 16
     $db->lc_columns = 1
+    $db->result_class = 'DBIx::Simple::Result';
 
     $db->begin_work         $db->commit
     $db->rollback           $db->disconnect
@@ -600,9 +605,8 @@ C<query> method.
 
 =item C<lc_columns = $bool>
 
-When true at time of query execution, makes C<columns>, C<hash>, C<new_hash>,
-C<hashes>, and C<map_hashes> use lower cased column names. C<lc_columns> is
-true by default.
+When true at time of query execution, makes C<columns>, C<hash>, C<hashes>, and
+C<map_hashes> use lower cased column names. C<lc_columns> is true by default.
 
 =item C<keep_statements = $integer>
 
@@ -624,6 +628,11 @@ never interpolate variables yourself.
 
 Of course, automatic value escaping is a much better reason for using
 placeholders.
+
+=item C<result_class = $string>
+
+Class to use for result objects. Defaults to DBIx::Simple::Result. A
+constructor is not used.
 
 =item C<error>
 
@@ -751,6 +760,8 @@ Keys are lower cased if C<lc_columns> was true when the query was executed.
 
 Fetches all remaining rows and returns a flattened list.
 
+In scalar context, returns an array reference.
+
 =item C<arrays>
 
 Fetches all remaining rows and returns a list of array references.
@@ -771,18 +782,24 @@ Constructs a hash of array references keyed by the values in the chosen column.
 
 In scalar context, returns a hash reference.
 
+In list context, returns interleaved keys and values.
+
 =item C<map_hashes($column_name)>
 
 Constructs a hash of hash references keyed by the values in the chosen column.
 
 In scalar context, returns a hash reference.
 
+In list context, returns interleaved keys and values.
+
 =item C<map>
 
-Constructs a simple hash, using the first two columns as key/value pairs.
-Should only be used with queries that return two columns.
+Constructs a simple hash, using the two columns as key/value pairs. Should
+only be used with queries that return two columns.
 
 In scalar context, returns a hash reference.
+
+In list context, returns interleaved keys and values.
 
 =item C<rows>
 

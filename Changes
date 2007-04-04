@@ -1,14 +1,22 @@
 Revision history for Perl extension DBIx::Simple.
 
-Incompatible changes are marked with "!!".
+Incompatible changes are marked with "!!". Incompatibility with and changes in
+"undocumented features" are not always specifically mentioned here.
+
+1.28  Wed Apr 4 2:16 2007
+        - New: $db->result_class. This allows using a custom subclass.
+        - $result->flat now returns an array reference in scalar context.
+        - Optimized: map (up to 15% faster).
+        - The "map" method now really requires exactly two columns.
+        - Minor documentation improvements.
 
 1.27  Sun Mar 18 21:14 2007
-        - Bugfix: (??) was replaced when quoted
-        - Bugfix: \' escaping was assumed, but actually only MySQL uses that
+     !! - Bugfix: (??) was replaced when quoted
+     !! - Bugfix: \' escaping was assumed, but actually only MySQL uses that
         - New: support \' escaping only for DBD::mysql
         - New: test suite!
         - Removed dependency on Data::Swap
-        - Removed compatibility package DBIx::Simple::SQE
+     !! - Removed compatibility package DBIx::Simple::SQE
 
 1.26  Tue Nov 30 14:25 2004
         - Removed documentation of emulate_subqueries.

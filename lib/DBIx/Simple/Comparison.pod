@@ -53,23 +53,36 @@ DBI
 
 =head2 Results
 
- DBI                         DBIx::Simple
+ DBI                          DBIx::Simple
 
- bind_columns             ~  bind
+ bind_columns              ~  bind
 
- fetchrow_arrayref/fetch  =  fetch
- fetchrow_array           ~  list
- ?                        ?  flat
- [@{fetchrow_arrayref}]   =  array
- fetchall_arrayref        ~  arrays
- fetchrow_hashref(N_?)    =  hash
- ?                        ?  hashes
+ fetchrow_arrayref/fetch   =  fetch
+ fetchrow_array            ~  list
+ *1                        ~  flat
+ [@{fetchrow_arrayref}]    =  array
+ fetchall_arrayref         ~  arrays
+ fetchrow_hashref() *2*3   =  hash
+ fetchall_arrayref({}) *4  ~  hashes
 
- fetchall_hashref         =  map_hashes
- ?                        ?  map_arrays
- ?                        ?  map
+ fetchall_hashref *2       =  map_hashes
+ ?                         ?  map_arrays
+ fetchall_hashref(1) *2    =  map
 
- $sth->{NAME_lc/NAME}     =  $result->columns
+ $sth->{NAME_lc/NAME}      =  $result->columns
+
+*1 There's no fetch variant, but you can do C<<{ @{
+$dbh->selectcol_arrayref('SELECT ...', { Slice => [] }) } }>>.
+
+*2 To receive the keys (column names) lowercased, use C<<
+$db->{FetchHashKeyName} = 'NAME_lc' >>. DBIx::Simple lower cases them by
+default.
+
+*3 Or supply an argument, C<'NAME_lc'>.
+
+*4 No, arrayref isn't a typo. When supplied an empty hash reference, DBI's
+fetchall_arrayref actually returns hashrefs. This DBI method does not support
+lower casing of keys, DBIx::Simple does.
 
 =head2 Direct access
 
