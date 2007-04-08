@@ -3,6 +3,13 @@ Revision history for Perl extension DBIx::Simple.
 Incompatible changes are marked with "!!". Incompatibility with and changes in
 "undocumented features" are not always specifically mentioned here.
 
+1.30  Sun Apr 8 2:29 2007
+        - Fixed bug #18629. Apparently Want does not consider a method call in
+          rvalue context. The premature optimization that used Want has simply
+          been removed. (Reported by Tomi via RT)
+        - Fixed bug #22829. With connect($dbh) or new($dbh), DBIx::Simple no
+          longer disconnects implicitly. (Reported by BORISZ via RT)
+
 1.29  Web Apr 4 2:22 2007
         - Fixed documentation typo.
 

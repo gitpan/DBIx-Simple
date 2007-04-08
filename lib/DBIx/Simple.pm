@@ -3,7 +3,7 @@ use strict;
 use DBI;
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.29';
+$DBIx::Simple::VERSION = '1.30';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -32,18 +32,13 @@ sub _swap {
     bless $hash2, $tempref;
 }
 
-if (eval { require Want }) {
-    *_want    = *Want::want;
-} else {
-    *_want    = sub { 1 };
-}
-
 ### constructor
 
 sub connect {
     my ($class, @arguments) = @_;
     my $self = { lc_columns => 1, result_class => 'DBIx::Simple::Result' };
     if (defined $arguments[0] and UNIVERSAL::isa($arguments[0], 'DBI::db')) {
+        $self->{dont_disconnect} = 1;
 	$self->{dbh} = shift @arguments;
 	Carp::carp("Additional arguments for $class->connect are ignored")
 	    if @arguments;
@@ -78,8 +73,7 @@ sub result_class    : lvalue { $_[0]->{result_class} }
 
 sub abstract : lvalue {
     require SQL::Abstract;
-    $_[0]->{abstract} ||= SQL::Abstract->new if _want('RVALUE');
-    $_[0]->{abstract}
+    $_[0]->{abstract} ||= SQL::Abstract->new;
 }
 
 ### private methods
@@ -112,9 +106,11 @@ sub _die {
     delete $old_statements{$self};
     delete $keep_statements{$self};
 
-    # Conditional, because destruction order is not guaranteed
-    # during global destruction.
-    $self->{dbh}->disconnect() if defined $self->{dbh};
+    unless ($self->{dont_disconnect}) {
+        # Conditional, because destruction order is not guaranteed
+        # during global destruction.
+        $self->{dbh}->disconnect() if defined $self->{dbh};
+    }
 
     _swap(
         $self,
@@ -691,8 +687,9 @@ garbage collection and error reporting.
 =item C<disconnect>
 
 Destroys (finishes) active statements and disconnects. Whenever the database
-object is destroyed, this happens automatically. After disconnecting, you can
-no longer use the database object or any of its result objects.
+object is destroyed, this happens automatically if DBIx::Simple handled the
+connection (i.e. you didn't use an existing DBI handle). After disconnecting,
+you can no longer use the database object or any of its result objects.
 
 =back
 
