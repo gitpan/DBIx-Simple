@@ -3,7 +3,7 @@ use strict;
 use DBI;
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.30';
+$DBIx::Simple::VERSION = '1.31';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -213,6 +213,14 @@ for my $method (qw/select insert update delete/) {
         my $self = shift;
         return $self->query($self->abstract->$method(@_));
     }
+}
+
+### public method wrapping SQL::Interp
+
+sub iquery {
+    require SQL::Interp;
+    my $self = shift;
+    return $self->query( SQL::Interp::sql_interp(@_) );
 }
 
 package DBIx::Simple::Dummy;
@@ -509,6 +517,10 @@ DBIx::Simple - Easy-to-use OO interface to DBI
 
     $result = $db->query(...)
 
+=head2 DBIx::SImple + SQL::Interp
+
+    $result = $db->iquery(...)
+
 =head2 DBIx::Simple + SQL::Abstract
 
     $db->abstract = SQL::Abstract->new(...)
@@ -587,18 +599,6 @@ should be a DBI::db object, not a DBIx::Simple object.
 This method is the constructor and returns a DBIx::Simple object on success. On
 failure, it returns undef.
 
-=item C<< abstract = SQL::Abstract->new(...) >>
-
-Sets the object to use with the C<select>, C<insert>, C<update> and C<delete>
-methods. On first access, will create one with SQL::Abstract's default options.
-
-I<Requires that Nathan Wiger's SQL::Abstract module be installed. It is
-available from CPAN.>
-
-In theory, you can assign any object to this property, as long as that object
-has these four methods, and they return a list suitable for use with the
-C<query> method.
-
 =item C<lc_columns = $bool>
 
 When true at time of query execution, makes C<columns>, C<hash>, C<hashes>, and
@@ -651,16 +651,39 @@ On success, returns a DBIx::Simple::Result object.
 
 On failure, returns a DBIx::Simple::Dummy object.
 
+=item C<iquery>
+
+Uses SQL::Interp to interpolate values into a query, and uses the resulting
+generated query and bind arguments with C<query>.
+
+See SQL::Interp's documentation for usage information.
+
+I<Requires that Mark Stosberg's SQL::Interp module be installed. It is
+available from CPAN. SQL::Interp is a fork from David Manura's
+SQL::Interpolate.>
+
 =item C<select>, C<insert>, C<update>, C<delete>
 
-Calls the respective method on C<abstract> and uses it with C<query>. In other
-words: these are high level forms of C<query>.
+Calls the respective method on C<abstract>, and uses the resulting generated
+query and bind arguments with C<query>.
 
-See the C<abstract> for more information, and read SQL::Abstract's
-documentation for usage information.
+See SQL::Abstract's documentation for usage information. You can override the
+object by assigning to the C<abstract> property.
 
 Obviously, calling C<query> directly is faster for the computer and using these
 abstracting methods is faster for the programmer.
+
+=item C<< abstract = SQL::Abstract->new(...) >>
+
+Sets the object to use with the C<select>, C<insert>, C<update> and C<delete>
+methods. On first access, will create one with SQL::Abstract's default options.
+
+I<Requires that Nathan Wiger's SQL::Abstract module be installed. It is
+available from CPAN.>
+
+In theory, you can assign any object to this property, as long as that object
+has these four methods, and they return a list suitable for use with the
+C<query> method.
 
 =item C<begin_work>, C<begin>, C<commit>, C<rollback>
 

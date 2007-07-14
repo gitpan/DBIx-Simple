@@ -3,7 +3,7 @@ BEGIN { use_ok('DBIx::Simple') };
 eval { require DBD::SQLite; 1 } or plan skip_all => 'DBD::SQLite required';
 eval { DBD::SQLite->VERSION >= 1 } or plan skip_all => 'DBD::SQLite >= 1.00 required';
 
-plan tests => 25;
+plan tests => 26;
 
 # In memory database! No file permission troubles, no I/O slowness.
 # http://use.perl.org/~tomhukins/journal/31457 ++
@@ -60,3 +60,9 @@ is_deeply(scalar $db->query($q)->columns, [ qw(FOO bar baz) ]);
 is_deeply(scalar $db->query($q)->map_hashes('baz'), { c => { qw(FOO a bar b) }, f => { qw(FOO d bar e) }, h => { qw(FOO g bar (??)) } });
 
 $db->lc_columns = 1;
+
+SKIP: {
+    eval { require SQL::Interp } or skip "SQL::Interp required", 1;
+    my $c = 'c';
+    is_deeply(scalar $db->iquery('SELECT * FROM xyzzy WHERE baz =', \$c)->array, [ qw(a b c) ]);
+}

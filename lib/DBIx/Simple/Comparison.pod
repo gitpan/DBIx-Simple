@@ -106,8 +106,9 @@ lower casing of keys, DBIx::Simple does.
 
  keep_statements
  lc_columns
- abstract (via SQL::Abstract)
+ iquery (via SQL::Interp)
  select, insert, update, delete (via SQL::Abstract)
+ abstract (via SQL::Abstract)
  flat
  hashes
  map_arrays

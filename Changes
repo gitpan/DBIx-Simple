@@ -3,6 +3,12 @@ Revision history for Perl extension DBIx::Simple.
 Incompatible changes are marked with "!!". Incompatibility with and changes in
 "undocumented features" are not always specifically mentioned here.
 
+1.31  Sun Jul 15 0:29 2007
+        - New: $db->iquery. This method loads SQL::Interp on demand. The
+          feature was requested by several people. Thanks go out to David
+          Manura for writing SQL::Interpolate, and to Mark Stosberg for
+          improving it and releasing that as SQL::Interp.
+
 1.30  Sun Apr 8 2:29 2007
         - Fixed bug #18629. Apparently Want does not consider a method call in
           rvalue context. The premature optimization that used Want has simply
