@@ -3,6 +3,12 @@ Revision history for Perl extension DBIx::Simple.
 Incompatible changes are marked with "!!". Incompatibility with and changes in
 "undocumented features" are not always specifically mentioned here.
 
+1.32  Mon Sep 17 14:58 2007
+        - Test updated to conform to fixed bug in Test::More. See
+          http://www.nntp.perl.org/group/perl.qa/2007/09/msg9269.html
+        - Please note that very probably RaiseError will be enabled by 
+          default in the next version.
+
 1.31  Sun Jul 15 0:29 2007
         - New: $db->iquery. This method loads SQL::Interp on demand. The
           feature was requested by several people. Thanks go out to David

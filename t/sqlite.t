@@ -1,9 +1,14 @@
 use Test::More;
-BEGIN { use_ok('DBIx::Simple') };
-eval { require DBD::SQLite; 1 } or plan skip_all => 'DBD::SQLite required';
-eval { DBD::SQLite->VERSION >= 1 } or plan skip_all => 'DBD::SQLite >= 1.00 required';
 
-plan tests => 26;
+BEGIN {
+    eval { require DBD::SQLite; 1 }
+        or plan skip_all => 'DBD::SQLite required';
+    eval { DBD::SQLite->VERSION >= 1 }
+        or plan skip_all => 'DBD::SQLite >= 1.00 required';
+
+    plan tests => 27;
+    use_ok('DBIx::Simple');
+}
 
 # In memory database! No file permission troubles, no I/O slowness.
 # http://use.perl.org/~tomhukins/journal/31457 ++
