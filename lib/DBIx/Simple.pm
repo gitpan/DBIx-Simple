@@ -3,7 +3,7 @@ use strict;
 use DBI;
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.32';
+$DBIx::Simple::VERSION = '1.33';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -76,6 +76,13 @@ sub abstract : lvalue {
     $_[0]->{abstract} ||= SQL::Abstract->new;
 }
 
+sub error {
+    my ($self) = @_;
+    return 'DBI error: ' . (ref $self ? $self->{dbh}->errstr : $DBI::errstr);
+}
+
+sub dbh { $_[0]->{dbh} }
+
 ### private methods
 
 # Replace (??) with (?, ?, ?, ...)
@@ -134,7 +141,7 @@ sub query {
 
     my $old = $old_statements{$self};
 
-    if (my $i = (grep $old->[$_][0] eq $query, 0..$#$old)[0]) {
+    if (defined( my $i = (grep $old->[$_][0] eq $query, 0..$#$old)[0] )) {
         $st = splice(@$old, $i, 1)->[1];
         $sth = $st->{sth};
     } else {
@@ -172,12 +179,6 @@ sub query {
     return bless { st => $st, lc_columns => $self->{lc_columns} }, $self->{result_class};
 }
 
-sub error {
-    my ($self) = @_;
-    return 'DBI error: ' . (ref $self ? $self->{dbh}->errstr : $DBI::errstr);
-}
-
-sub dbh            { $_[0]->{dbh}             }
 sub begin_work     { $_[0]->{dbh}->begin_work }
 sub begin          { $_[0]->begin_work        }
 sub commit         { $_[0]->{dbh}->commit     }
@@ -198,6 +199,7 @@ sub last_insert_id {
 sub disconnect {
     my ($self) = @_;
     $self->_die(sprintf($err_cause, "$self->disconnect", (caller)[1, 2]));
+    return 1;
 }
 
 sub DESTROY {
@@ -337,6 +339,9 @@ sub bind {
     $_[0]->{st}->{sth}->bind_columns(\@_[1..$#_]);
 }
 
+
+### Single
+
 sub fetch {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
     return $_[0]->{st}->{sth}->fetch;
@@ -368,6 +373,44 @@ sub hash {
     );
 }
 
+sub kv_list {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    my @keys   = $_[0]->columns;
+    my $values = $_[0]->array or return;
+    Carp::croak("Different numbers of column names and values")
+        if @keys != @$values;
+    return   map { $keys[$_], $values->[$_] } 0 .. $#keys   if wantarray;
+    return [ map { $keys[$_], $values->[$_] } 0 .. $#keys ];
+}
+
+sub kv_array {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    scalar shift->kv_list(@_);
+}
+
+sub object {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    my $self = shift;
+    my $class = shift || ':RowObject';
+    if ($class =~ /^:/) {
+        $class = "DBIx::Simple::Result:$class";
+        (my $package = "$class.pm") =~ s[::][/]g;
+        require $package;
+    }
+    if ($class->can('new_from_dbix_simple')) {
+        return scalar $class->new_from_dbix_simple($self, @_);
+    }
+    if ($class->can('new')) {
+        return $class->new( $self->kv_list );
+    }
+    Carp::croak(
+        qq(Can't locate object method "new_from_dbix_simple" or "new" ) .
+        qq(via package "$class" (perhaps you forgot to load "$class"?))
+    );
+}
+
+### Slurp
+
 sub flat {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
     return   map @$_, $_[0]->arrays if wantarray;
@@ -382,11 +425,47 @@ sub arrays {
 
 sub hashes {
     $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
-    my ($self) = @_;
     my @return;
     my $dummy;
-    push @return, $dummy while $dummy = $self->hash;
+    push @return, $dummy while $dummy = $_[0]->hash;
     return wantarray ? @return : \@return;
+}
+
+sub kv_flat {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    return   map @$_, $_[0]->kv_arrays if wantarray;
+    return [ map @$_, $_[0]->kv_arrays ];
+}
+
+sub kv_arrays {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    my @return;
+    my $dummy;
+    push @return, $dummy while $dummy = $_[0]->kv_array;
+    return wantarray ? @return : \@return;
+}
+
+sub objects {
+    $_[0]->_die if ref $_[0]->{st} eq 'DBIx::Simple::DeadObject';
+    my $self = shift;
+    my $class = shift || ':RowObject';
+    if ($class =~ /^:/) {
+        $class = "DBIx::Simple::Result:$class";
+        (my $package = "$class.pm") =~ s[::][/]g;
+        require $package;
+    }
+    if ($class->can('new_from_dbix_simple')) {
+        return   $class->new_from_dbix_simple($self, @_) if wantarray;
+        return [ $class->new_from_dbix_simple($self, @_) ];
+    }
+    if ($class->can('new')) {
+        return   map { $class->new( @$_ ) } $self->kv_arrays if wantarray;
+        return [ map { $class->new( @$_ ) } $self->kv_arrays ];
+    }
+    Carp::croak(
+        qq(Can't locate object method "new_from_dbix_simple" or "new" ) .
+        qq(via package "$class" (perhaps you forgot to load "$class"?))
+    );
 }
 
 sub map_hashes {
@@ -499,7 +578,7 @@ __END__
 
 =head1 NAME
 
-DBIx::Simple - Easy-to-use OO interface to DBI
+DBIx::Simple - Very complete easy-to-use OO interface to DBI
 
 =head1 SYNOPSIS
 
@@ -537,9 +616,12 @@ DBIx::Simple - Easy-to-use OO interface to DBI
     $result->into($foo, $bar, $baz)
     $row = $result->fetch
 
-    @row = $result->list    @rows = $result->flat
-    $row = $result->array   @rows = $result->arrays
-    $row = $result->hash    @rows = $result->hashes
+    @row = $result->list      @rows = $result->flat
+    $row = $result->array     @rows = $result->arrays
+    $row = $result->hash      @rows = $result->hashes
+    @row = $result->kv_list   @rows = $result->kv_flat
+    $row = $result->kv_array  @rows = $result->kv_arrays
+    $obj = $result->object    @objs = $result->objects
 
     %map = $result->map_arrays(...)
     %map = $result->map_hashes(...)
@@ -579,15 +661,13 @@ $db->query(...) or die $db->error >>.
 
 =head2 DBIx::Simple methods
 
-=over 4
+=head3 Class methods
 
-=item C<< DBIx::Simple->connect($dbh) >>
+=over 14
 
-=item C<< DBIx::Simple->connect($dsn, $user, $pass, \%options) >>
+=item C<connect($dbh)>, C<connect($dsn, $user, $pass, \%options)>
 
-=item C<< DBIx::Simple->new($dbh) >>
-
-=item C<< DBIx::Simple->new($dsn, $user, $pass, \%options) >>
+=item C<new($dbh)>, C<new($dsn, $user, $pass, \%options)>
 
 The C<connect> or C<new> class method takes either an existing DBI object
 ($dbh), or a list of arguments to pass to C<< DBI->connect >>. See L<DBI> for a
@@ -599,10 +679,84 @@ should be a DBI::db object, not a DBIx::Simple object.
 This method is the constructor and returns a DBIx::Simple object on success. On
 failure, it returns undef.
 
+=back
+
+=head3 Object methods
+
+=over 14
+
+=item C<query($query, @values)>
+
+Prepares and executes the query and returns a result object.
+
+If the string C<(??)> is present in the query, it is replaced with a list of as
+many question marks as @values.
+
+The database drivers substitute placeholders (question marks that do not appear
+in quoted literals) in the query with the given @values, after them escaping
+them. You should always use placeholders, and never use raw user input in
+database queries.
+
+On success, returns a DBIx::Simple::Result object. On failure, returns a
+DBIx::Simple::Dummy object.
+
+=item C<iquery(...)>
+
+Uses SQL::Interp to interpolate values into a query, and uses the resulting
+generated query and bind arguments with C<query>. See SQL::Interp's
+documentation for usage information.
+
+Requires Mark Storberg's SQL::Interp, which is available from CPAN. SQL::Interp
+is a fork from David Manura's SQL::Interpolate.
+
+=item C<select>, C<insert>, C<update>, C<delete>
+
+Calls the respective method on C<abstract>, and uses the resulting generated
+query and bind arguments with C<query>. See SQL::Abstract's documentation for
+usage information. You can override the object by assigning to the C<abstract>
+property.
+
+Requires Nathan Wiger's SQL::Abstract, which is available from CPAN.
+
+=item C<begin_work>, C<begin>, C<commit>, C<rollback>
+
+These transaction related methods call the DBI respective methods and
+Do What You Mean. See L<DBI> for details.
+
+C<begin> is an alias for C<begin_work>.
+
+=item C<func(...)>
+
+Calls the C<func> method of DBI. See L<DBI> for details.
+
+=item C<last_insert_id(...)>
+
+Calls the C<last_insert_id> method of DBI. See L<DBI> for details. Note that
+this feature requires DBI 1.38 or newer.
+
+=item C<disconnect>
+
+Destroys (finishes) active statements and disconnects. Whenever the database
+object is destroyed, this happens automatically if DBIx::Simple handled the
+connection (i.e. you didn't use an existing DBI handle). After disconnecting,
+you can no longer use the database object or any of its result objects.
+
+=back
+
+=head3 Object properties
+
+=over 14
+
+=item C<dbh>
+
+Exposes the internal database handle. Use this only if you know what you are
+doing. Keeping a reference or doing queries can interfere with DBIx::Simple's
+garbage collection and error reporting.
+
 =item C<lc_columns = $bool>
 
-When true at time of query execution, makes C<columns>, C<hash>, C<hashes>, and
-C<map_hashes> use lower cased column names. C<lc_columns> is true by default.
+When true at time of query execution, makes several result object methods use
+lower cased column names. C<lc_columns> is true by default.
 
 =item C<keep_statements = $integer>
 
@@ -635,84 +789,16 @@ constructor is not used.
 Returns the error string of the last DBI method. See the discussion of "C<err>"
 and "C<errstr>" in L<DBI>.
 
-=item C<query($query, @values)>
-
-The C<query> method prepares and executes the query and returns a result object.
-
-If the string C<(??)> is present in the query, it is replaced with a list of as
-many question marks as @values.
-
-The database drivers substitute placeholders (question marks that do not appear
-in quoted literals) in the query with the given @values, after them escaping
-them. You should always use placeholders, and never use raw user input in
-database queries.
-
-On success, returns a DBIx::Simple::Result object.
-
-On failure, returns a DBIx::Simple::Dummy object.
-
-=item C<iquery>
-
-Uses SQL::Interp to interpolate values into a query, and uses the resulting
-generated query and bind arguments with C<query>.
-
-See SQL::Interp's documentation for usage information.
-
-I<Requires that Mark Stosberg's SQL::Interp module be installed. It is
-available from CPAN. SQL::Interp is a fork from David Manura's
-SQL::Interpolate.>
-
-=item C<select>, C<insert>, C<update>, C<delete>
-
-Calls the respective method on C<abstract>, and uses the resulting generated
-query and bind arguments with C<query>.
-
-See SQL::Abstract's documentation for usage information. You can override the
-object by assigning to the C<abstract> property.
-
-Obviously, calling C<query> directly is faster for the computer and using these
-abstracting methods is faster for the programmer.
-
 =item C<< abstract = SQL::Abstract->new(...) >>
 
 Sets the object to use with the C<select>, C<insert>, C<update> and C<delete>
 methods. On first access, will create one with SQL::Abstract's default options.
 
-I<Requires that Nathan Wiger's SQL::Abstract module be installed. It is
-available from CPAN.>
+Requires Nathan Wiger's SQL::Abstract, which is available from CPAN.
 
 In theory, you can assign any object to this property, as long as that object
 has these four methods, and they return a list suitable for use with the
 C<query> method.
-
-=item C<begin_work>, C<begin>, C<commit>, C<rollback>
-
-These transaction related methods call the DBI respective methods and
-Do What You Mean. See L<DBI> for details.
-
-C<begin> is an alias for C<begin_work>.
-
-=item C<func(...)>
-
-This calls the C<func> method of DBI. See L<DBI> for details.
-
-=item C<last_insert_id(...)>
-
-This calls the C<last_insert_id> method of DBI. See L<DBI> for details. Note
-that this feature requires DBI 1.38 or newer.
-
-=item C<dbh>
-
-Exposes the internal database handle. Use this only if you know what you are
-doing. Keeping a reference or doing queries can interfere with DBIx::Simple's
-garbage collection and error reporting.
-
-=item C<disconnect>
-
-Destroys (finishes) active statements and disconnects. Whenever the database
-object is destroyed, this happens automatically if DBIx::Simple handled the
-connection (i.e. you didn't use an existing DBI handle). After disconnecting,
-you can no longer use the database object or any of its result objects.
 
 =back
 
@@ -724,102 +810,30 @@ boolean context, a dummy object evaluates to false.
 
 =head2 DBIx::Simple::Result methods
 
-=over 12
+Methods documented to return "a list" return a reference to an array of the
+same in scalar context, unless something else is explicitly mentioned.
+
+=over 14
 
 =item C<columns>
 
-Returns a list of column names. In scalar context, returns an array reference.
-
-Column names are lower cased if C<lc_columns> was true when the query was
-executed.
+Returns a list of column names. Affected by C<lc_columns>.
 
 =item C<bind(LIST)>
 
-Binds the given LIST to the columns. The elements of LIST must be writable
-LVALUEs. In other words, use this method as:
-
-    $result->bind(my ($foo, $bar));
-    $result->fetch;
-
-Or, combined:
-
-    $result->into(my ($foo, $bar));
-
-Unlike with DBI's C<bind_columns>, the C<\> operator is not needed.
+Binds the given LIST of variables to the columns. Unlike with DBI's
+C<bind_columns>, passing references is not needed.
 
 Bound variables are very efficient. Binding a tied variable doesn't work.
 
-=item C<fetch>
+=item C<attr(...)>
 
-Fetches a single row and returns a reference to the array that holds the
-values. This is the same array every time.
+Returns a copy of an sth attribute (property). See L<DBI/"Statement Handle
+Attributes"> for details.
 
-Subsequent fetches (using any method) may change the values in the variables
-passed and the returned reference's array.
+=item C<func(...)>
 
-=item C<into(LIST)>
-
-Combines C<bind> with C<fetch>. Returns what C<fetch> returns.
-
-=item C<list>
-
-Fetches a single row and returns a list of values. In scalar context,
-returns only the last value.
-
-=item C<array>
-
-Fetches a single row and returns an array reference.
-
-=item C<hash>
-
-Fetches a single row and returns a hash reference.
-
-Keys are lower cased if C<lc_columns> was true when the query was executed.
-
-=item C<flat>
-
-Fetches all remaining rows and returns a flattened list.
-
-In scalar context, returns an array reference.
-
-=item C<arrays>
-
-Fetches all remaining rows and returns a list of array references.
-
-In scalar context, returns an array reference.
-
-=item C<hashes>
-
-Fetches all remaining rows and returns a list of hash references.
-
-In scalar context, returns an array reference.
-
-Keys are lower cased if C<lc_columns> was true when the query was executed.
-
-=item C<map_arrays($column_number)>
-
-Constructs a hash of array references keyed by the values in the chosen column.
-
-In scalar context, returns a hash reference.
-
-In list context, returns interleaved keys and values.
-
-=item C<map_hashes($column_name)>
-
-Constructs a hash of hash references keyed by the values in the chosen column.
-
-In scalar context, returns a hash reference.
-
-In list context, returns interleaved keys and values.
-
-=item C<map>
-
-Constructs a simple hash, using the two columns as key/value pairs. Should
-only be used with queries that return two columns.
-
-In scalar context, returns a hash reference.
-
-In list context, returns interleaved keys and values.
+This calls the C<func> method on the sth of DBI. See L<DBI> for details.
 
 =item C<rows>
 
@@ -830,26 +844,129 @@ For SELECT statements, it is generally not possible to know how many rows are
 returned. MySQL does provide this information. See L<DBI> for a detailed
 explanation.
 
+=item C<finish>
+
+Finishes the statement. After finishing a statement, it can no longer be used.
+When the result object is destroyed, its statement handle is automatically
+finished and destroyed. There should be no reason to call this method
+explicitly; just let the result object go out of scope.
+
+=back
+
+=head3 Fetching a single row at a time
+
+=over 14
+
+=item C<fetch>
+
+Returns a reference to the array that holds the values. This is the same array
+every time.
+
+Subsequent fetches (using any method) may change the values in the variables
+passed and the returned reference's array.
+
+=item C<into(LIST)>
+
+Combines C<bind> with C<fetch>. Returns what C<fetch> returns.
+
+=item C<list>
+
+Returns a list of values, or (in scalar context), only the last value.
+
+=item C<array>
+
+Returns a reference to an array.
+
+=item C<hash>
+
+Returns a reference to a hash, keyed by column name. Affected by C<lc_columns>.
+
+=item C<kv_list>
+
+Returns an ordered list of interleaved keys and values. Affected by
+C<lc_columns>.
+
+=item C<kv_array>
+
+Returns a reference to an array of interleaved column names and values. Like
+kv, but returns an array reference even in list context. Affected by
+C<lc_columns>.
+
+=item C<object($class, ...)>
+
+Returns an instance of $class. See "Object construction". Possibly affected by
+C<lc_columns>.
+
+=back
+
+=head3 Fetching all remaining rows
+
+=over 14
+
+=item C<flat>
+
+Returns a flattened list.
+
+=item C<arrays>
+
+Returns a list of references to arrays
+
+=item C<hashes>
+
+Returns a list of references to hashes, keyed by column name. Affected by
+C<lc_columns>.
+
+=item C<kv_flat>
+
+Returns an flattened list of interleaved column names and values. Affected by
+C<lc_columns>.
+
+=item C<kv_arrays>
+
+Returns a list of references to arrays of interleaved column names and values.
+Affected by C<lc_columns>.
+
+=item C<objects($class, ...)>
+
+Returns a list of instances of $class. See "Object construction". Possibly
+affected by C<lc_columns>.
+
+=item C<map_arrays($column_number)>
+
+Constructs a hash of array references keyed by the values in the chosen column,
+and returns a list of interleaved keys and values, or (in scalar context), a
+reference to a hash.
+
+=item C<map_hashes($column_name)>
+
+Constructs a hash of hash references keyed by the values in the chosen column,
+and returns a list of interleaved keys and values, or (in scalar context), a
+reference to a hash. Affected by C<lc_columns>.
+
+=item C<map>
+
+Constructs a simple hash, using the two columns as key/value pairs. Should
+only be used with queries that return two columns. Returns a list of interleaved
+keys and values, or (in scalar context), a reference to a hash.
+
 =item C<xto(%attr)>
 
 Returns a DBIx::XHTML_Table object, passing the constructor a reference to
 C<%attr>.
 
-I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed.
-It is available from CPAN.>
+Requires Jeffrey Hayes Anderson's DBIx::XHTML_Table, which is available from
+CPAN.
 
 In general, using the C<html> method (described below) is much easier. C<xto>
-is available in case you need more flexibility.
-
-This method ignores the C<lc_columns> property.
+is available in case you need more flexibility. Not affected by C<lc_columns>.
 
 =item C<html(%attr)>
 
 Returns an (X)HTML formatted table, using the DBIx::XHTML_Table module. Passes
 a reference to C<%attr> to both the constructor and the C<output> method.
 
-I<Requires that Jeffrey Hayes Anderson's DBIx::XHTML_Table module be installed.
-It is available from CPAN.>
+Requires Jeffrey Hayes Anderson's DBIx::XHTML_Table, which is available from
+CPAN.
 
 This method is a shortcut method. That means that
 
@@ -874,29 +991,75 @@ do the same as:
 
 Returns a string with a simple text representation of the data. C<$type>
 can be any of: C<neat>, C<table>, C<box>. It defaults to C<table> if
-Text::Table is installed, to C<neat> if it is.
+Text::Table is installed, to C<neat> if it isn't.
 
-I<C<table> and C<box> require that Anno Siegel's Text::Table module be
-installed. It is available from CPAN.>
-
-
-=item C<attr(...)>
-
-Returns a copy of an sth attribute (property). See L<DBI/"Statement Handle
-Attributes"> for details.
-
-=item C<func(...)>
-
-This calls the C<func> method of DBI. See L<DBI> for details.
-
-=item C<finish>
-
-Finishes the statement. After finishing a statement, it can no longer be used.
-When the result object is destroyed, its statement handle is automatically
-finished and destroyed. There should be no reason to call this method
-explicitly; just let the result object go out of scope.
+C<table> and C<box> require Anno Siegel's Text::Table, which is available from
+CPAN.
 
 =back
+
+=head2 Object construction
+
+DBIx::Simple has basic support for returning results as objects. The actual
+construction method has to be provided by the chosen class, making this
+functionality rather advanced and perhaps unsuited for beginning programmers.
+
+When the C<object> or C<objects> method is called on the result object returned
+by one of the query methods, two approaches are tried. In either case, pass the
+name of a class as the first argument. A prefix of a single colon can be used
+as an alias for C<DBIx::Simple::Result::>, e.g. C<":Example"> is short for
+C<"DBIx::Simple::Result::Example">. When this shortcut is used, the
+corresponding module is loaded automatically.
+
+=head3 Simple object construction
+
+When C<object> is given a class that provides a C<new> method, but not a
+C<new_from_dbix_simple> method, C<new> is called with a list of interleaved
+column names and values, like a flattened hash, but ordered. C<objects> causes
+C<new> to be called multiple times, once for each remaining row.
+
+Example:
+
+    {
+        package DBIx::Simple::Result::ObjectExample;
+        sub new {
+            my ($class, %args) = @_;
+            return bless $class, \%args;
+        }
+
+        sub foo { ... }
+        sub bar { ... }
+    }
+
+
+    $db->query('SELECT foo, bar FROM baz')->object(':ObjectExample')->foo();
+
+=head3 Advanced object construction
+
+When C<object> or C<objects> is given a class that provides a
+C<new_from_dbix_simple> method, any C<new> is ignored, and
+C<new_from_dbix_simple> is called with a list of the DBIx::Simple::Result
+object and any arguments passed to C<object> or C<objects>.
+
+C<new_from_dbix_simple> is called in scalar context for C<object>, and in list
+context for C<objects>. In scalar context, it should fetch I<exactly one row>,
+and in list context, it should fetch I<all remaining rows>.
+
+Example:
+
+    {
+        package DBIx::Simple::Result::ObjectExample;
+        sub new_from_dbix_simple {
+            my ($class, $result, @args) = @_;
+            return map { bless $class, $_ } $result->hashes if wantarray;
+            return       bless $class, $result->hash;
+        }
+
+        sub foo { ... }
+        sub bar { ... }
+    }
+
+    $db->query('SELECT foo, bar FROM baz')->object(':ObjectExample')->foo();
 
 =head1 MISCELLANEOUS
 
@@ -908,13 +1071,13 @@ line numbers in DBIx/Simple.pm.
 
 =head1 LICENSE
 
-There is no license. This software was released into the public domain. Do with
-it what you want, but on your own risk. The author disclaims any
-responsibility.
+Pick your favourite OSI approved license :)
+
+http://www.opensource.org/licenses/alphabetical
 
 =head1 AUTHOR
 
-Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>
+Juerd Waalboer <#####@juerd.nl> <http://juerd.nl/>
 
 =head1 SEE ALSO
 

@@ -1,4 +1,5 @@
 use Test::More;
+use strict;
 
 BEGIN {
     eval { require DBD::SQLite; 1 }
@@ -6,7 +7,7 @@ BEGIN {
     eval { DBD::SQLite->VERSION >= 1 }
         or plan skip_all => 'DBD::SQLite >= 1.00 required';
 
-    plan tests => 27;
+    plan tests => 56;
     use_ok('DBIx::Simple');
 }
 
@@ -36,6 +37,7 @@ is_deeply(scalar $db->query($q)->list, 'c');
 
 is_deeply([ $db->query($q)->list ], [ qw(a b c) ]);
 
+
 is_deeply($db->query($q)->array, [ qw(a b c) ]);
 
 is_deeply(scalar $db->query($q)->arrays, [ [ qw(a b c) ], [ qw(d e f) ], [ qw(g (??) h) ] ]);
@@ -44,10 +46,21 @@ is_deeply($db->query($q)->hash, { qw(foo a bar b baz c) });
 
 is_deeply(scalar $db->query($q)->hashes, [ { qw(foo a bar b baz c) }, { qw(foo d bar e baz f) }, { qw(foo g bar (??) baz h) } ]);
 
+is_deeply([ $db->query($q)->kv_list ], [ qw(foo a bar b baz c) ]);
+is_deeply(scalar
+            $db->query($q)->kv_list,   [ qw(foo a bar b baz c) ]);
+is_deeply(  $db->query($q)->kv_array , [ qw(foo a bar b baz c) ]);
+
+
+is_deeply(scalar $db->query($q)->kv_arrays, [ [ qw(foo a bar b baz c) ], [ qw(foo d bar e baz f) ], [ qw(foo g bar (??) baz h) ] ]);
+is_deeply(scalar $db->query($q)->kv_flat,   [ qw(  foo a bar b baz c          foo d bar e baz f          foo g bar (??) baz h) ]);
+
 is_deeply(scalar $db->query($q)->columns, [ qw(foo bar baz) ]);
 
 is_deeply([ $db->query($q)->arrays ], scalar $db->query($q)->arrays);
 is_deeply([ $db->query($q)->hashes ], scalar $db->query($q)->hashes);
+is_deeply([ $db->query($q)->kv_flat ], scalar $db->query($q)->kv_flat);
+is_deeply([ $db->query($q)->kv_arrays ], scalar $db->query($q)->kv_arrays);
 is_deeply([ $db->query($q)->columns ], scalar $db->query($q)->columns);
 
 is_deeply(scalar $db->query($q)->map_arrays(2), { c => [ qw(a b) ], f => [ qw(d e) ], h => [ qw(g (??)) ] });
@@ -71,3 +84,36 @@ SKIP: {
     my $c = 'c';
     is_deeply(scalar $db->iquery('SELECT * FROM xyzzy WHERE baz =', \$c)->array, [ qw(a b c) ]);
 }
+
+SKIP: {
+    eval { require Object::Accessor } or skip "Object::Accessor required", 1;
+
+    my $object = $db->query($q)->object;
+    isa_ok($object, "DBIx::Simple::Result::RowObject");
+    is($object->foo, 'a');
+    is($object->bar, 'b');
+    is($object->baz, 'c');
+
+    my @objects = $db->query($q)->objects;
+    isa_ok($objects[0], "DBIx::Simple::Result::RowObject");
+    is($objects[0]->foo, 'a');
+    is($objects[0]->bar, 'b');
+    is($objects[0]->baz, 'c');
+    isa_ok($objects[1], "DBIx::Simple::Result::RowObject");
+    is($objects[1]->foo, 'd');
+    is($objects[1]->bar, 'e');
+    is($objects[1]->baz, 'f');
+
+    sub Mock::new_from_dbix_simple {
+        my ($class, $result, @foo) = @_;
+        isa_ok($result, "DBIx::Simple::Result");
+        is_deeply(\@foo, [ 42, 21 ]);
+        return wantarray;
+    }
+
+    ok(! $db->query($q)->object('Mock', 42, 21));  # wantarray false
+    is_deeply(     [ $db->query($q)->objects('Mock', 42, 21) ], [ 1 ]);  # wantarray true
+    is_deeply(scalar $db->query($q)->objects('Mock', 42, 21),   [ 1 ]);  # wantarray true
+}
+
+ok($db->disconnect);

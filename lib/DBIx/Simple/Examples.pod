@@ -373,12 +373,6 @@ Displays a simple table using ASCII lines, with an outside border.
 
 For C<table> and C<box>, you need Anno Siegel's Text::Table module installed.
 
-=head1 LICENSE
-
-There is no license. This software was released into the public domain. Do with
-it what you want, but on your own risk. The author disclaims any
-responsibility.
-
 =head1 AUTHOR
 
 Juerd Waalboer <juerd@cpan.org> <http://juerd.nl/>

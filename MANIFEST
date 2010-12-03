@@ -9,4 +9,5 @@ t/swap.t
 lib/DBIx/Simple.pm
 lib/DBIx/Simple/Examples.pod
 lib/DBIx/Simple/Comparison.pod
+lib/DBIx/Simple/Result/RowObject.pm
 META.yml                                 Module meta-data (added by MakeMaker)
