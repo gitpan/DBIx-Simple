@@ -86,12 +86,12 @@ SKIP: {
 }
 
 SKIP: {
-    eval { require Object::Accessor } or skip "Object::Accessor required", 1;
+    eval { require Object::Accessor } or skip "Object::Accessor required", 21;
 
     my $object = $db->query($q)->object;
     isa_ok($object, "DBIx::Simple::Result::RowObject");
     is($object->foo, 'a');
-    is($object->bar, 'b');
+    is($object->bar, 'b', 'bar is b');
     is($object->baz, 'c');
 
     my @objects = $db->query($q)->objects;

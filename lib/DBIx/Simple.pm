@@ -3,7 +3,7 @@ use strict;
 use DBI;
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.33';
+$DBIx::Simple::VERSION = '1.34';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
 
@@ -1010,6 +1010,9 @@ name of a class as the first argument. A prefix of a single colon can be used
 as an alias for C<DBIx::Simple::Result::>, e.g. C<":Example"> is short for
 C<"DBIx::Simple::Result::Example">. When this shortcut is used, the
 corresponding module is loaded automatically.
+
+The default class when no class is given, is C<:RowObject>. It requires Jos
+Boumans' Object::Accessor, which is available from CPAN.
 
 =head3 Simple object construction
 

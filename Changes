@@ -3,7 +3,11 @@ Revision history for Perl extension DBIx::Simple.
 Incompatible changes are marked with "!!". Incompatibility with and changes in
 "undocumented features" are not always specifically mentioned here.
 
-1.33  Sat Sep 4 0:30 2010
+1.34  Mon Dec 12 16:28 2010
+        - Added missing documentation. (Reported by Krassimir Berov.)
+        - Fixed off-by-20 mistake in unit tests.
+
+1.33  Sat Dec 4 0:30 2010
         - New license: any(OSI).
         - Documentation overhaul.
         - New: $result->kv_list, $result->kv_array, $result->kv_flat,
