@@ -7,17 +7,20 @@ BEGIN {
     eval { DBD::SQLite->VERSION >= 1 }
         or plan skip_all => 'DBD::SQLite >= 1.00 required';
 
-    plan tests => 56;
+    plan tests => 57;
     use_ok('DBIx::Simple');
 }
 
 # In memory database! No file permission troubles, no I/O slowness.
 # http://use.perl.org/~tomhukins/journal/31457 ++
 
-my $db = DBIx::Simple->connect('dbi:SQLite:dbname=:memory:', '', '', { RaiseError => 1 });
+my $db = DBIx::Simple->connect('dbi:SQLite:dbname=:memory:');
 my $q = 'SELECT * FROM xyzzy ORDER BY foo';
 
 ok($db);
+
+eval { $db->query('SYNTAX ERR0R !@#!@#') };
+like($@, qr/prepare failed/);  # test RaiseError
 
 ok($db->query('CREATE TABLE xyzzy (FOO, bar, baz)'));
 

@@ -3,9 +3,11 @@ use strict;
 use DBI;
 use Carp ();
 
-$DBIx::Simple::VERSION = '1.34';
+$DBIx::Simple::VERSION = '1.35';
 $Carp::Internal{$_} = 1
     for qw(DBIx::Simple DBIx::Simple::Result DBIx::Simple::DeadObject);
+
+my $no_raiseerror = $ENV{PERL_DBIX_SIMPLE_NO_RAISEERROR};
 
 my $quoted         = qr/(?:'[^']*'|"[^"]*")*/;  # 'foo''bar' simply matches the (?:) twice
 my $quoted_mysql   = qr/(?:(?:[^\\']*(?:\\.[^\\']*)*)'|"(?:[^\\"]*(?:\\.[^\\"]*)*)")*/;
@@ -44,7 +46,10 @@ sub connect {
 	    if @arguments;
     } else {
 	$arguments[3]->{PrintError} = 0
-	    unless defined $arguments[3] and defined $arguments[3]{PrintError};
+	    unless defined $arguments[3] and exists $arguments[3]{PrintError};
+        $arguments[3]->{RaiseError} = 1
+            unless $no_raiseerror
+            or defined $arguments[3] and exists $arguments[3]{RaiseError};
 	$self->{dbh} = DBI->connect(@arguments);
     }
 
@@ -676,6 +681,12 @@ detailed description.
 You cannot use this method to clone a DBIx::Simple object: the $dbh passed
 should be a DBI::db object, not a DBIx::Simple object.
 
+For new connections, PrintError is disabled by default. If you enable it,
+beware that it will report line numbers in DBIx/Simple.pm.
+
+For new connections, B<RaiseError is enabled by default> unless the environment
+variable C<PERL_DBIX_SIMPLE_NO_RAISEERROR> is set to a non-empty non-0 value.
+
 This method is the constructor and returns a DBIx::Simple object on success. On
 failure, it returns undef.
 
@@ -1069,8 +1080,6 @@ Example:
 The mapping methods do not check whether the keys are unique. Rows that are
 fetched later overwrite earlier ones.
 
-PrintError is disabled by default. If you enable it, beware that it will report
-line numbers in DBIx/Simple.pm.
 
 =head1 LICENSE
 
